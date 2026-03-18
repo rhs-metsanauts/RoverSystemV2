@@ -1,0 +1,31 @@
+config:
+  has_zed: false
+  has_usb_camera: true
+  has_arm: false
+
+rocker_bogie:
+  channels: [0, 1, 2, 3]
+  sun_position: [150, 35, 90, 90]
+  regular_position: [90, 90, 150, 30]
+
+drivetrain:
+  motors:
+    left:
+      in1: 17
+      in2: 27
+      pwm_pin: 18
+    right:
+      in1: 22
+      in2: 23
+      pwm_pin: 19
+
+usb_camera:
+  pan:
+    channel: 5
+    min_angle: 0
+    max_angle: 180
+  tilt:
+    channel: 6
+    min_angle: 0
+    max_angle: 180
+
