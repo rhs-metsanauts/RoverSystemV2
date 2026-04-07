@@ -3,6 +3,10 @@ config:
   has_usb_camera: true
   has_arm: false
 
+servo_hat:
+  i2c_bus: 7
+  i2c_address: 0x40
+
 rocker_bogie:
   channels: [0, 1, 2, 3]
   sun_position: [150, 35, 90, 90]

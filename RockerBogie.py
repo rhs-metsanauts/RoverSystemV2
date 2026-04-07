@@ -6,7 +6,7 @@ class RockerBogie:
     def __init__(self):
         self.hat = get_servo_hat()
         config = get_config()["rocker_bogie"]
-        self.channels = config["rocker_bogie"]["channels"]
+        self.channels = config["channels"]
         self.sun_position = config["sun_position"]
         self.regular_position = config["regular_position"]
     
@@ -19,3 +19,10 @@ class RockerBogie:
     
     def toRegularPosition(self):
         self.setPositions(self.regular_position)
+
+if __name__ == "__main__":
+    import time
+    rocker_bogie = RockerBogie()
+    rocker_bogie.toSunPosition()
+    time.sleep(2)
+    rocker_bogie.toRegularPosition()
