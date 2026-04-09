@@ -1,6 +1,6 @@
 config:
-  has_zed: false
-  has_usb_camera: true
+  has_zed: true
+  has_usb_camera: false
   has_arm: false
 
 servo_hat:
@@ -15,21 +15,17 @@ rocker_bogie:
 drivetrain:
   motors:
     left:
-      in1: 17
-      in2: 27
-      pwm_pin: 18
+      channel: 4
     right:
-      in1: 22
-      in2: 23
-      pwm_pin: 19
+      channel: 5
 
 usb_camera:
   pan:
-    channel: 5
+    channel: 6
     min_angle: 0
     max_angle: 180
   tilt:
-    channel: 6
+    channel: 7
     min_angle: 0
     max_angle: 180
 
