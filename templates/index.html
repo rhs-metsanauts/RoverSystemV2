@@ -1,0 +1,1878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NASA HERA Rover Control Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:          #212121;
+            --bg-deep:     #1a1a1a;
+            --surface:     #303030;
+            --surface-2:   #252525;
+            --border:      #333333;
+            --border-soft: #444444;
+            --connected:   #4CAF50;
+            --warning:     #FF9800;
+            --error:       #F44336;
+            --active:      #2196F3;
+            --rpi:         #9C27B0;
+            --jetson:      #00BCD4;
+            --text:        #ffffff;
+            --text-muted:  #9E9E9E;
+            --text-dim:    #666666;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Roboto', system-ui, sans-serif;
+            font-size: 14px;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Top bar ── */
+        .top-bar {
+            height: 56px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+        .top-bar-logo {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+        .top-bar-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--text);
+            text-transform: uppercase;
+        }
+        .top-bar-sub {
+            font-size: 10px;
+            letter-spacing: 1.5px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            font-family: 'Roboto Mono', monospace;
+        }
+        .top-bar-spacer { flex: 1; }
+        .system-health {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .health-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+        }
+        .health-dot.green  { background: var(--connected); box-shadow: 0 0 6px var(--connected); }
+        .health-dot.yellow { background: var(--warning);   box-shadow: 0 0 6px var(--warning); }
+        .health-dot.red    { background: var(--error);     box-shadow: 0 0 6px var(--error); }
+
+        /* ── Main area ── */
+        .main-area {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── Main viewport (left) ── */
+        .main-viewport {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-deep);
+        }
+
+        .tab-bar {
+            display: flex;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 14px 20px;
+            border: none;
+            border-bottom: 2px solid transparent;
+            background: transparent;
+            color: var(--text-muted);
+            font-family: 'Roboto', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .tab-btn.active  { color: var(--active); border-bottom-color: var(--active); }
+        .tab-btn:hover:not(.active) { color: var(--text); }
+
+        .viewport-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+        .viewport-content::-webkit-scrollbar { width: 5px; }
+        .viewport-content::-webkit-scrollbar-track { background: transparent; }
+        .viewport-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* ── Right panel ── */
+        .right-panel {
+            width: 340px;
+            flex-shrink: 0;
+            background: var(--bg);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+        .panel-section {
+            padding: 16px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .panel-section-title {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+        }
+
+        /* ── Device cards ── */
+        .device-card {
+            background: var(--surface);
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 10px;
+            border: 2px solid transparent;
+            transition: box-shadow 0.2s;
+        }
+        .device-card:last-child { margin-bottom: 0; }
+        .device-card.rpi    { border-color: var(--rpi); }
+        .device-card.jetson { border-color: var(--jetson); }
+        .device-card.offline {
+            border-color: var(--error) !important;
+            opacity: 0.7;
+            background: var(--surface-2);
+        }
+        .device-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: var(--text-dim);
+        }
+        .status-dot.green  { background: var(--connected); box-shadow: 0 0 5px var(--connected); }
+        .status-dot.red    { background: var(--error);     box-shadow: 0 0 5px var(--error); }
+        .status-dot.yellow { background: var(--warning);   box-shadow: 0 0 5px var(--warning); }
+        .device-name {
+            font-size: 13px;
+            font-weight: 500;
+            flex: 1;
+        }
+        .device-badge {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 3px;
+        }
+        .rpi-badge    { background: rgba(156,39,176,0.2);  color: #CE93D8; }
+        .jetson-badge { background: rgba(0,188,212,0.15);  color: #80DEEA; }
+        .device-rows { display: flex; flex-direction: column; gap: 5px; }
+        .device-row  { display: flex; justify-content: space-between; font-size: 12px; }
+        .device-row .key { color: var(--text-dim); }
+        .device-row .val { font-family: 'Roboto Mono', monospace; color: var(--text); }
+        .device-row .val.green { color: var(--connected); }
+        .device-row .val.red   { color: var(--error); }
+        .device-row .val.blue  { color: var(--active); }
+        .device-row .val.cyan  { color: var(--jetson); }
+
+        /* ── Config fields (right panel) ── */
+        .config-field { margin-bottom: 12px; }
+        .config-field:last-of-type { margin-bottom: 0; }
+        .config-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            font-family: 'Roboto Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }
+        .config-input {
+            width: 100%;
+            background: var(--surface-2);
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            color: var(--text-muted);
+            padding: 7px 10px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 11px;
+            transition: border-color 0.15s;
+        }
+        .config-input:focus {
+            outline: none;
+            border-color: var(--active);
+            color: var(--text);
+        }
+        .config-save-btn {
+            width: 100%;
+            margin-top: 12px;
+            padding: 9px;
+            background: transparent;
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-family: 'Roboto', sans-serif;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .config-save-btn:hover { border-color: var(--active); color: var(--active); }
+
+        /* ── Telemetry bar ── */
+        .telemetry-bar {
+            height: 48px;
+            background: var(--bg);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            flex-shrink: 0;
+            gap: 0;
+        }
+        .telem-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 20px;
+            border-right: 1px solid var(--border);
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+        }
+        .telem-item:first-child { padding-left: 0; }
+        .telem-label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .telem-val   { color: var(--text); }
+        .telem-val.green { color: var(--connected); }
+        .telem-val.red   { color: var(--error); }
+        .telem-val.gray  { color: var(--text-dim); }
+        .telem-val.cyan  { color: var(--jetson); }
+        .mode-badge {
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-family: 'Roboto Mono', monospace;
+            background: rgba(33,150,243,0.15);
+            color: var(--active);
+            border: 1px solid rgba(33,150,243,0.3);
+        }
+        .mode-badge.lora {
+            background: rgba(156,39,176,0.15);
+            color: #CE93D8;
+            border-color: rgba(156,39,176,0.3);
+        }
+
+        /* ── Commands tab — mode switcher ── */
+        .mode-switcher {
+            display: flex;
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 11px 20px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-family: 'Roboto', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .mode-btn:first-child { border-right: 1px solid var(--border-soft); }
+        .mode-btn.active { background: var(--active); color: #fff; }
+        .mode-btn:hover:not(.active) { background: rgba(33,150,243,0.08); color: var(--text); }
+        .mode-label { display: block; font-size: 10px; opacity: 0.7; margin-top: 2px; }
+
+        /* ── Form elements ── */
+        .form-group { margin-bottom: 18px; }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-family: 'Roboto Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: 'Roboto', sans-serif;
+            padding: 9px 12px;
+            font-size: 13px;
+            transition: border-color 0.15s;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--active);
+            box-shadow: 0 0 0 2px rgba(33,150,243,0.15);
+        }
+        select { cursor: pointer; background-color: var(--surface); }
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+        }
+
+        .dynamic-fields {
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            background: var(--active);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 12px 24px;
+            font-family: 'Roboto', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .btn:hover    { background: #1976D2; }
+        .btn:active   { transform: scale(0.99); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            padding: 12px 18px;
+            font-family: 'Roboto', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .btn-secondary:hover { border-color: var(--active); color: var(--active); }
+
+        /* ── Response section ── */
+        .response-section {
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            padding: 16px;
+            margin-top: 16px;
+            display: none;
+        }
+        .response-section.show { display: block; }
+        .response-section h3 {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+            font-family: 'Roboto Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+        .response-content {
+            background: var(--bg-deep);
+            padding: 12px;
+            border-radius: 4px;
+            border-left: 3px solid var(--active);
+        }
+        .response-content.success { border-left-color: var(--connected); }
+        .response-content.error   { border-left-color: var(--error); }
+        .response-field {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+        .response-field.inline { display: flex; align-items: center; gap: 8px; }
+        .response-field:last-child { margin-bottom: 0; }
+        .field-label {
+            font-family: 'Roboto Mono', monospace;
+            font-weight: 500;
+            color: var(--active);
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            letter-spacing: 1px;
+        }
+        .field-label.inline { margin-bottom: 0; flex-shrink: 0; }
+        .field-value {
+            color: var(--text);
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.55;
+        }
+        .field-value.inline { margin-bottom: 0; }
+        .field-value.collapsed { max-height: 120px; overflow: hidden; position: relative; }
+        .field-value.collapsed::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 40px;
+            background: linear-gradient(to bottom, transparent, var(--surface));
+        }
+        .expand-btn {
+            background: rgba(33,150,243,0.1);
+            border: 1px solid rgba(33,150,243,0.25);
+            color: var(--active);
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-family: 'Roboto', sans-serif;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: background 0.15s;
+        }
+        .expand-btn:hover { background: rgba(33,150,243,0.18); }
+        .image-container { margin-top: 8px; max-width: 100%; text-align: center; }
+        .image-container img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); }
+
+        /* status-indicator inside labels (kept for JS compatibility) */
+        .status-indicator { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+        .status-online  { background: var(--connected); }
+        .status-offline { background: var(--error); }
+
+        .hidden { display: none !important; }
+
+        /* ── AI FAB ── */
+        .ai-fab {
+            position: fixed;
+            bottom: 68px;
+            right: 360px;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--active);
+            border: none;
+            color: #fff;
+            font-size: 22px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(33,150,243,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .ai-fab:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(33,150,243,0.6); }
+
+        /* ── AI modal ── */
+        .ai-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10,10,10,0.75);
+            z-index: 1001;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .ai-overlay.open { display: flex; }
+        .ai-modal {
+            width: 520px;
+            max-width: 94vw;
+            max-height: 85vh;
+            background: var(--surface);
+            border: 1px solid var(--border-soft);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .ai-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        .ai-modal-header h3 { font-size: 14px; font-weight: 500; }
+        .ai-close-btn { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 0 4px; transition: color 0.15s; }
+        .ai-close-btn:hover { color: var(--text); }
+        .ai-chat-log {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+        .ai-chat-log::-webkit-scrollbar { width: 4px; }
+        .ai-chat-log::-webkit-scrollbar-track { background: transparent; }
+        .ai-chat-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .ai-msg {
+            padding: 10px 13px;
+            border-radius: 6px;
+            font-size: 13px;
+            line-height: 1.55;
+            max-width: 92%;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .ai-msg.user      { align-self: flex-end; background: rgba(33,150,243,0.15); border: 1px solid rgba(33,150,243,0.3); color: var(--text); }
+        .ai-msg.assistant { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); }
+        .ai-msg.thinking  { font-family: 'Roboto Mono', monospace; color: var(--text-muted); font-size: 12px; font-style: italic; }
+        .ai-msg.error     { border-left: 3px solid var(--error); color: #ef9a9a; }
+        .ai-msg .thinking-header {
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: var(--active);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-style: normal;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .thinking-timer { font-weight: 400; font-style: normal; color: var(--text-muted); font-size: 10px; }
+        .ai-msg .thinking-body { max-height: 150px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        .ai-msg .thinking-body::-webkit-scrollbar { width: 3px; }
+        .ai-msg .thinking-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .ai-msg .thinking-body.expanded { max-height: 400px; }
+        .ai-msg .thinking-toggle { background: none; border: none; color: var(--active); font-size: 11px; font-family: 'Roboto Mono', monospace; cursor: pointer; padding: 4px 0 0; }
+        .ai-autofill-bar { display: flex; gap: 8px; margin-top: 10px; }
+        .ai-autofill-btn { padding: 5px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; font-family: 'Roboto', sans-serif; cursor: pointer; transition: all 0.15s; }
+        .ai-autofill-btn.apply { background: var(--active); color: #fff; border: none; }
+        .ai-autofill-btn.apply:hover { background: #1976D2; }
+        .ai-autofill-btn.dismiss { background: transparent; color: var(--text-muted); border: 1px solid var(--border-soft); }
+        .ai-autofill-btn.dismiss:hover { border-color: var(--active); color: var(--active); }
+        .ai-input-bar { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+        .ai-input-bar textarea { flex: 1; resize: none; min-height: 40px; max-height: 100px; font-family: 'Roboto', sans-serif; font-size: 13px; }
+        .ai-send-btn { padding: 0 16px; border-radius: 4px; background: var(--active); border: none; color: #fff; font-size: 14px; cursor: pointer; transition: background 0.15s; }
+        .ai-send-btn:hover { background: #1976D2; }
+        .ai-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .ai-clear-btn { background: none; border: 1px solid rgba(239,154,154,0.35); color: #ef9a9a; font-size: 11px; font-family: 'Roboto', sans-serif; padding: 4px 10px; border-radius: 4px; cursor: pointer; transition: background 0.15s; }
+        .ai-clear-btn:hover { background: rgba(239,154,154,0.1); }
+
+        /* ── Map tab ── */
+        .map-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 0 16px;
+            margin-bottom: 0;
+        }
+        .map-status { display: flex; align-items: center; gap: 8px; }
+        .map-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .map-status-dot.connected    { background: var(--connected); box-shadow: 0 0 5px var(--connected); }
+        .map-status-dot.disconnected { background: var(--error); }
+        .map-status-label { font-family: 'Roboto Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+        .map-canvas-wrap {
+            position: relative;
+            width: 100%;
+            height: 480px;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-soft);
+            background: var(--bg-deep);
+        }
+        #mapCanvas { width: 100%; height: 100%; display: block; }
+        #minimapCanvas {
+            position: absolute;
+            bottom: 10px; right: 10px;
+            width: 160px; height: 160px;
+            border-radius: 6px;
+            border: 1px solid var(--border-soft);
+            pointer-events: none;
+        }
+        .map-stats {
+            display: flex;
+            gap: 24px;
+            padding: 12px 0 0;
+        }
+        .map-stat-item {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .map-stat-item span { color: var(--active); }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <!-- Top bar -->
+    <div class="top-bar">
+        <div class="top-bar-logo">
+            <span class="top-bar-title">🚀 HERA Rover Command Center</span>
+            <span class="top-bar-sub">METSAnauts Mission Control</span>
+        </div>
+        <div class="top-bar-spacer"></div>
+        <div class="system-health">
+            <span class="health-dot" id="topBarDot"></span>
+            <span id="topBarStatusText" style="font-size:11px;">STANDBY</span>
+        </div>
+    </div>
+
+    <!-- Main area: viewport (left) + right panel -->
+    <div class="main-area">
+
+        <!-- Left: main viewport with tabs -->
+        <div class="main-viewport">
+            <div class="tab-bar">
+                <button class="tab-btn active" id="tabCmdBtn" onclick="switchTab('commands')">Commands</button>
+                <button class="tab-btn" id="tabMapBtn" onclick="switchTab('map')">Map</button>
+            </div>
+
+            <!-- Commands tab -->
+            <div class="viewport-content" id="tab-commands">
+                <!-- Mode Switcher -->
+                <div class="mode-switcher">
+                    <button class="mode-btn active" id="modeWifi" onclick="setMode('wifi')">
+                        📡 WiFi
+                        <span class="mode-label">Send via network</span>
+                    </button>
+                    <button class="mode-btn" id="modeLora" onclick="setMode('lora')">
+                        📻 LoRa
+                        <span class="mode-label">Send via radio</span>
+                    </button>
+                </div>
+
+                <!-- Command Type Selection -->
+                <div class="form-group">
+                    <label for="commandType">Command Type</label>
+                    <select id="commandType">
+                        <option value="bash_command">Bash Command</option>
+                        <option value="edit_file">Edit File</option>
+                        <option value="basic_action">Python Action</option>
+                        <option value="read_file">Read File</option>
+                        <option value="read_image">Read Image</option>
+                    </select>
+                </div>
+
+                <!-- Dynamic Fields -->
+                <div class="dynamic-fields">
+                    <div id="fields_bash_command" class="field-group">
+                        <div class="form-group">
+                            <label for="command">Command</label>
+                            <input type="text" id="command">
+                        </div>
+                    </div>
+                    <div id="fields_edit_file" class="field-group hidden">
+                        <div class="form-group">
+                            <label for="edit_file_name">File Name</label>
+                            <input type="text" id="edit_file_name">
+                        </div>
+                        <div class="form-group">
+                            <label for="file_content">File Content</label>
+                            <textarea id="file_content"></textarea>
+                        </div>
+                    </div>
+                    <div id="fields_basic_action" class="field-group hidden">
+                        <div class="form-group">
+                            <label for="action">Python Code</label>
+                            <textarea id="action"></textarea>
+                        </div>
+                    </div>
+                    <div id="fields_read_file" class="field-group hidden">
+                        <div class="form-group">
+                            <label for="read_file_name">File Name</label>
+                            <input type="text" id="read_file_name">
+                        </div>
+                    </div>
+                    <div id="fields_read_image" class="field-group hidden">
+                        <div class="form-group">
+                            <label for="image_file_name">Image File Path</label>
+                            <input type="text" id="image_file_name">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Buttons Row -->
+                <div style="display:flex;gap:10px;">
+                    <button class="btn" id="sendBtn" onclick="sendCommand()" style="flex:1;">
+                        Send Command
+                    </button>
+                    <button class="btn-secondary" id="aiBtn" onclick="openAiModal()">
+                        ✨ AI Assist
+                    </button>
+                </div>
+
+                <!-- Response Section -->
+                <div class="response-section" id="responseSection">
+                    <h3>Response</h3>
+                    <div class="response-content" id="responseContent"></div>
+                </div>
+            </div><!-- end #tab-commands -->
+
+            <!-- Map tab -->
+            <div class="viewport-content hidden" id="tab-map">
+                <div class="map-controls">
+                    <div class="map-status">
+                        <span class="map-status-dot disconnected" id="mapStatusDot"></span>
+                        <span class="map-status-label" id="mapStatusText">DISCONNECTED</span>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn" style="width:auto;padding:9px 18px;" onclick="startMapping()">Start</button>
+                        <button class="btn-secondary" onclick="stopMapping()">Stop</button>
+                        <button class="btn-secondary" onclick="clearMapping()">Clear</button>
+                    </div>
+                </div>
+                <div class="map-canvas-wrap">
+                    <canvas id="mapCanvas"></canvas>
+                    <canvas id="minimapCanvas" width="160" height="160"></canvas>
+                </div>
+                <div class="map-stats">
+                    <span class="map-stat-item">Points: <span id="mapPointCount">0</span></span>
+                    <span class="map-stat-item">Coverage: <span id="mapCoverage">0.0</span> m²</span>
+                    <span class="map-stat-item">Time: <span id="mapElapsed">00:00</span></span>
+                </div>
+            </div><!-- end #tab-map -->
+        </div><!-- end .main-viewport -->
+
+        <!-- Right panel: device cards + config -->
+        <div class="right-panel">
+
+            <!-- Device cards -->
+            <div class="panel-section">
+                <div class="panel-section-title">Devices</div>
+
+                <!-- Rover (Pi) card -->
+                <div class="device-card rpi" id="roverCard">
+                    <div class="device-card-header">
+                        <span class="status-dot" id="roverStatusDot"></span>
+                        <span class="device-name">Rover</span>
+                        <span class="device-badge rpi-badge">Raspberry Pi</span>
+                    </div>
+                    <div class="device-rows">
+                        <div class="device-row">
+                            <span class="key">Connection</span>
+                            <span class="val gray" id="roverStatusText">Unknown</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="key">Mode</span>
+                            <span class="val blue" id="roverModeText">WiFi</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="key">Address</span>
+                            <span class="val" id="roverAddressText">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Jetson card -->
+                <div class="device-card jetson offline" id="jetsonCard">
+                    <div class="device-card-header">
+                        <span class="status-dot red" id="jetsonStatusDot"></span>
+                        <span class="device-name">Mapper</span>
+                        <span class="device-badge jetson-badge">Jetson Nano</span>
+                    </div>
+                    <div class="device-rows">
+                        <div class="device-row">
+                            <span class="key">Connection</span>
+                            <span class="val red" id="jetsonStatusText">Offline</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="key">Points</span>
+                            <span class="val cyan" id="jetsonPointsText">0</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="key">WebSocket</span>
+                            <span class="val" id="jetsonWsText">:9001</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Configuration -->
+            <div class="panel-section" style="flex:1;">
+                <div class="panel-section-title">Configuration</div>
+
+                <!-- WiFi config -->
+                <div id="wifiConfig">
+                    <div class="config-field">
+                        <div class="config-label">Rover Server Host</div>
+                        <input class="config-input" type="text" id="serverUrl" value="localhost" placeholder="IP or hostname">
+                        <!-- hidden status-indicator kept for JS compatibility -->
+                        <span class="status-indicator status-offline hidden" id="statusIndicator"></span>
+                    </div>
+                    <div class="config-field">
+                        <div class="config-label">Timeout (seconds)</div>
+                        <input class="config-input" type="number" id="timeout" value="35" min="1" max="300" style="width:100px;">
+                    </div>
+                </div>
+
+                <!-- LoRa config -->
+                <div id="loraConfig" class="hidden">
+                    <div class="config-field">
+                        <div class="config-label">LoRa Destination ID (0–255)</div>
+                        <input class="config-input" type="number" id="loraDestination" value="0" min="0" max="255" style="width:100px;">
+                    </div>
+                </div>
+
+                <div class="config-field">
+                    <div class="config-label">Jetson WS URL</div>
+                    <input class="config-input" type="text" id="jetsonWsUrl" placeholder="ws://192.168.1.100:9001">
+                </div>
+
+                <button class="config-save-btn" onclick="saveConfig()">Save Config</button>
+            </div>
+
+        </div><!-- end .right-panel -->
+    </div><!-- end .main-area -->
+
+    <!-- Telemetry bar -->
+    <div class="telemetry-bar">
+        <div class="telem-item">
+            <span class="telem-label">Rover</span>
+            <span class="status-dot" id="telemRoverDot"></span>
+            <span class="telem-val gray" id="telemRoverText">—</span>
+        </div>
+        <div class="telem-item">
+            <span class="telem-label">Mapper</span>
+            <span class="status-dot red" id="telemMapperDot"></span>
+            <span class="telem-val red" id="telemMapperText">Offline</span>
+        </div>
+        <div class="telem-item">
+            <span class="telem-label">Mode</span>
+            <span class="mode-badge" id="telemModeBadge">WiFi</span>
+        </div>
+        <div class="telem-item">
+            <span class="telem-label">Points</span>
+            <span class="telem-val cyan" id="telemPoints">0</span>
+        </div>
+    </div>
+
+    <!-- AI Assistant Modal -->
+    <div class="ai-overlay" id="aiOverlay" onclick="if(event.target===this)closeAiModal()">
+        <div class="ai-modal">
+            <div class="ai-modal-header">
+                <h3>🤖 AI Command Assistant</h3>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="ai-clear-btn" onclick="clearAiChat()">Clear Chat</button>
+                    <button class="ai-close-btn" onclick="closeAiModal()">&times;</button>
+                </div>
+            </div>
+            <div class="ai-chat-log" id="aiChatLog"></div>
+            <div class="ai-input-bar">
+                <textarea id="aiInput" placeholder="Describe what you want the rover to do…" rows="1"
+                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMessage();}"></textarea>
+                <button class="ai-send-btn" id="aiSendBtn" onclick="sendAiMessage()">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI FAB -->
+    <button class="ai-fab" onclick="openAiModal()" title="AI Command Assistant">✨</button>
+
+    <script>
+        /* ── Three.js map globals ── */
+        let threeScene, threeCamera, threeRenderer, threeControls;
+        let pointGeometry, positionArray, colorArray;
+        let pointCount = 0;
+        const MAX_POINTS = 600000;
+        let mapInitialised = false;
+
+        function initThreeJS() {
+            if (mapInitialised) return;
+            mapInitialised = true;
+
+            const canvas = document.getElementById('mapCanvas');
+            const wrap = canvas.parentElement;
+            const W = wrap.clientWidth;
+            const H = wrap.clientHeight;
+
+            threeScene = new THREE.Scene();
+            threeScene.background = new THREE.Color(0x070c16);
+
+            threeCamera = new THREE.PerspectiveCamera(60, W / H, 0.01, 1000);
+            threeCamera.position.set(0, 5, 8);
+            threeCamera.lookAt(0, 0, 0);
+
+            threeRenderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+            threeRenderer.setPixelRatio(window.devicePixelRatio);
+            threeRenderer.setSize(W, H);
+
+            threeControls = new THREE.OrbitControls(threeCamera, threeRenderer.domElement);
+            threeControls.enableDamping = true;
+            threeControls.dampingFactor = 0.05;
+
+            const grid = new THREE.GridHelper(20, 40, 0x1c2c48, 0x1c2c48);
+            threeScene.add(grid);
+            threeScene.add(new THREE.AxesHelper(1));
+
+            positionArray = new Float32Array(MAX_POINTS * 3);
+            colorArray = new Float32Array(MAX_POINTS * 3);
+            pointGeometry = new THREE.BufferGeometry();
+            pointGeometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+            pointGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+            pointGeometry.setDrawRange(0, 0);
+
+            const pointMaterial = new THREE.PointsMaterial({
+                size: 0.03,
+                vertexColors: true,
+                sizeAttenuation: true,
+            });
+            threeScene.add(new THREE.Points(pointGeometry, pointMaterial));
+
+            window.addEventListener('resize', () => {
+                if (document.getElementById('tab-map').classList.contains('hidden')) return;
+                const nW = wrap.clientWidth;
+                const nH = wrap.clientHeight;
+                threeCamera.aspect = nW / nH;
+                threeCamera.updateProjectionMatrix();
+                threeRenderer.setSize(nW, nH);
+            });
+
+            function animate() {
+                requestAnimationFrame(animate);
+                if (!document.getElementById('tab-map').classList.contains('hidden')) {
+                    threeControls.update();
+                    threeRenderer.render(threeScene, threeCamera);
+                }
+            }
+            animate();
+        }
+
+        function switchTab(tab) {
+            const isMap = tab === 'map';
+            document.getElementById('tab-commands').classList.toggle('hidden', isMap);
+            document.getElementById('tab-map').classList.toggle('hidden', !isMap);
+            document.getElementById('tabCmdBtn').classList.toggle('active', !isMap);
+            document.getElementById('tabMapBtn').classList.toggle('active', isMap);
+            if (isMap) initThreeJS();
+        }
+
+        /* ── Map state ── */
+        let mapSSE = null;
+        let mapStartTime = null;
+        let mapElapsedTimer = null;
+        let mapMinX = Infinity, mapMaxX = -Infinity;
+        let mapMinZ = Infinity, mapMaxZ = -Infinity;
+
+        function appendPoints(points) {
+            if (!mapInitialised) return;
+            const available = MAX_POINTS - pointCount;
+            const batch = points.slice(0, available);
+            if (batch.length === 0) return;
+
+            for (let i = 0; i < batch.length; i++) {
+                const [x, y, z, r, g, b] = batch[i];
+                const base = (pointCount + i) * 3;
+                positionArray[base]     = x;
+                positionArray[base + 1] = y;
+                positionArray[base + 2] = z;
+                colorArray[base]     = r / 255;
+                colorArray[base + 1] = g / 255;
+                colorArray[base + 2] = b / 255;
+                if (x < mapMinX) mapMinX = x;
+                if (x > mapMaxX) mapMaxX = x;
+                if (z < mapMinZ) mapMinZ = z;
+                if (z > mapMaxZ) mapMaxZ = z;
+            }
+
+            pointCount += batch.length;
+            pointGeometry.setDrawRange(0, pointCount);
+            pointGeometry.attributes.position.needsUpdate = true;
+            pointGeometry.attributes.color.needsUpdate = true;
+
+            document.getElementById('mapPointCount').textContent = pointCount.toLocaleString();
+            const dx = Math.max(0.01, mapMaxX - mapMinX);
+            const dz = Math.max(0.01, mapMaxZ - mapMinZ);
+            document.getElementById('mapCoverage').textContent = (dx * dz).toFixed(1);
+        }
+
+        function resetPointCloud() {
+            if (!mapInitialised) return;
+            pointCount = 0;
+            pointGeometry.setDrawRange(0, 0);
+            pointGeometry.attributes.position.needsUpdate = true;
+            pointGeometry.attributes.color.needsUpdate = true;
+            mapMinX = Infinity; mapMaxX = -Infinity;
+            mapMinZ = Infinity; mapMaxZ = -Infinity;
+            document.getElementById('mapPointCount').textContent = '0';
+            document.getElementById('mapCoverage').textContent = '0.0';
+        }
+
+        const ORIN_WS_URL = 'ws://192.168.55.1:9001';
+        let mapWS = null;
+
+        function openMapSSE() {
+            if (mapWS && mapWS.readyState === WebSocket.OPEN) return;
+            mapWS = new WebSocket(ORIN_WS_URL);
+            mapWS.onopen = function() {
+                document.getElementById('mapStatusDot').className = 'map-status-dot connected';
+                document.getElementById('mapStatusText').textContent = 'CONNECTED';
+            };
+            mapWS.onmessage = function(e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'chunk') {
+                        appendPoints(data.points);
+                        updateMinimap(data.rover_pos);
+                    }
+                } catch (err) {
+                    console.warn('[Map] Chunk parse error:', err);
+                }
+            };
+            mapWS.onerror = function() {
+                document.getElementById('mapStatusDot').className = 'map-status-dot disconnected';
+                document.getElementById('mapStatusText').textContent = 'DISCONNECTED';
+            };
+            mapWS.onclose = function() {
+                document.getElementById('mapStatusDot').className = 'map-status-dot disconnected';
+                document.getElementById('mapStatusText').textContent = 'DISCONNECTED';
+            };
+        }
+
+        function closeMapSSE() {
+            if (mapWS) {
+                mapWS.close();
+                mapWS = null;
+            }
+        }
+
+        /* ── Minimap ── */
+        let roverPath = [];
+        const MINIMAP_SIZE = 160;
+
+        function updateMinimap(roverPos) {
+            const canvas = document.getElementById('minimapCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            roverPath.push([roverPos[0], roverPos[2]]);   // XZ plane
+
+            ctx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+            ctx.fillStyle = 'rgba(7,12,22,0.88)';
+            ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+
+            if (roverPath.length < 2) return;
+
+            const xs = roverPath.map(p => p[0]);
+            const zs = roverPath.map(p => p[1]);
+            const xMin = Math.min(...xs), xMax = Math.max(...xs);
+            const zMin = Math.min(...zs), zMax = Math.max(...zs);
+            const range = Math.max(xMax - xMin, zMax - zMin, 1);
+            const pad = 14;
+            const scale = (MINIMAP_SIZE - pad * 2) / range;
+
+            function toCanvas(x, z) {
+                return [pad + (x - xMin) * scale, pad + (z - zMin) * scale];
+            }
+
+            // Path line
+            ctx.strokeStyle = '#5b9cf6';
+            ctx.lineWidth = 1.5;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            const [sx, sy] = toCanvas(roverPath[0][0], roverPath[0][1]);
+            ctx.moveTo(sx, sy);
+            for (let i = 1; i < roverPath.length; i++) {
+                const [px, py] = toCanvas(roverPath[i][0], roverPath[i][1]);
+                ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+
+            // Current rover position dot
+            const [rx, ry] = toCanvas(roverPos[0], roverPos[2]);
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(rx, ry, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function resetMinimap() {
+            roverPath = [];
+            const canvas = document.getElementById('minimapCanvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+            }
+        }
+
+        /* ── Elapsed timer ── */
+        function _updateElapsed() {
+            if (!mapStartTime) return;
+            const s = Math.floor((Date.now() - mapStartTime) / 1000);
+            const mm = String(Math.floor(s / 60)).padStart(2, '0');
+            const ss = String(s % 60).padStart(2, '0');
+            document.getElementById('mapElapsed').textContent = `${mm}:${ss}`;
+        }
+
+        /* ── Map control buttons ── */
+        function _sendMapAction(action) {
+            if (mapWS && mapWS.readyState === WebSocket.OPEN) {
+                mapWS.send(JSON.stringify({action}));
+            }
+        }
+
+        function startMapping() {
+            openMapSSE();
+            setTimeout(() => _sendMapAction('start'), 300);
+            mapStartTime = Date.now();
+            if (!mapElapsedTimer) mapElapsedTimer = setInterval(_updateElapsed, 1000);
+        }
+
+        function stopMapping() {
+            _sendMapAction('stop');
+            if (mapElapsedTimer) { clearInterval(mapElapsedTimer); mapElapsedTimer = null; }
+        }
+
+        function clearMapping() {
+            _sendMapAction('clear');
+            stopMapping();
+            resetPointCloud();
+            resetMinimap();
+            mapStartTime = null;
+            document.getElementById('mapElapsed').textContent = '00:00';
+        }
+
+        /* ── System health (top bar) ── */
+        let _roverOnline = false;
+
+        function _setRoverStatus(online) {
+            _roverOnline = online;
+            const rDot  = document.getElementById('roverStatusDot');
+            const rTxt  = document.getElementById('roverStatusText');
+            const rCard = document.getElementById('roverCard');
+            const trDot = document.getElementById('telemRoverDot');
+            const trTxt = document.getElementById('telemRoverText');
+            if (rDot && rTxt) {
+                rDot.className = online ? 'status-dot green' : 'status-dot red';
+                rTxt.className = online ? 'val green' : 'val red';
+                rTxt.textContent = online ? 'Online' : 'Error';
+            }
+            if (rCard) rCard.classList.toggle('offline', !online);
+            if (trDot && trTxt) {
+                trDot.className = online ? 'status-dot green' : 'status-dot red';
+                trTxt.className = online ? 'telem-val green' : 'telem-val red';
+                trTxt.textContent = online ? 'Online' : 'Error';
+            }
+            _updateSystemHealth(document.getElementById('jetsonStatusDot')?.classList.contains('green') ?? false);
+        }
+
+        function _updateSystemHealth(jetsonConnected) {
+            const dot = document.getElementById('topBarDot');
+            const txt = document.getElementById('topBarStatusText');
+            if (!dot || !txt) return;
+            if (_roverOnline && jetsonConnected) {
+                dot.className = 'health-dot green';
+                txt.textContent = 'SYSTEMS NOMINAL';
+            } else if (_roverOnline || jetsonConnected) {
+                dot.className = 'health-dot yellow';
+                txt.textContent = 'PARTIAL';
+            } else {
+                dot.className = 'health-dot red';
+                txt.textContent = 'NO SIGNAL';
+            }
+        }
+
+        /* ── Status polling ── */
+        function _pollMapStatus() {
+            fetch('/map_status')
+                .then(r => r.json())
+                .then(data => {
+                    const dot = document.getElementById('mapStatusDot');
+                    const txt = document.getElementById('mapStatusText');
+
+                    // Map tab status dot
+                    if (dot && txt) {
+                        if (data.connected) {
+                            dot.className = 'map-status-dot connected';
+                            txt.textContent = 'CONNECTED';
+                        } else {
+                            dot.className = 'map-status-dot disconnected';
+                            txt.textContent = 'DISCONNECTED';
+                        }
+                    }
+
+                    // Jetson device card
+                    const jDot  = document.getElementById('jetsonStatusDot');
+                    const jTxt  = document.getElementById('jetsonStatusText');
+                    const jPts  = document.getElementById('jetsonPointsText');
+                    const jCard = document.getElementById('jetsonCard');
+                    if (jDot && jTxt && jCard) {
+                        if (data.connected) {
+                            jDot.className  = 'status-dot green';
+                            jTxt.className  = 'val green';
+                            jTxt.textContent = 'Connected';
+                            jCard.classList.remove('offline');
+                        } else {
+                            jDot.className  = 'status-dot red';
+                            jTxt.className  = 'val red';
+                            jTxt.textContent = 'Offline';
+                            jCard.classList.add('offline');
+                        }
+                    }
+                    if (jPts) jPts.textContent = (data.point_count || 0).toLocaleString();
+
+                    // Telemetry bar — mapper + points
+                    const tmDot = document.getElementById('telemMapperDot');
+                    const tmTxt = document.getElementById('telemMapperText');
+                    const tPts  = document.getElementById('telemPoints');
+                    if (tmDot && tmTxt) {
+                        if (data.connected) {
+                            tmDot.className  = 'status-dot green';
+                            tmTxt.className  = 'telem-val green';
+                            tmTxt.textContent = 'Connected';
+                        } else {
+                            tmDot.className  = 'status-dot red';
+                            tmTxt.className  = 'telem-val red';
+                            tmTxt.textContent = 'Offline';
+                        }
+                    }
+                    if (tPts) tPts.textContent = (data.point_count || 0).toLocaleString();
+
+                    _updateSystemHealth(data.connected);
+                })
+                .catch(() => {});
+        }
+        const _mapStatusInterval = setInterval(_pollMapStatus, 3000);
+        _pollMapStatus();  // immediate first check
+
+        window.addEventListener('beforeunload', () => {
+            clearInterval(_mapStatusInterval);
+            if (mapElapsedTimer) clearInterval(mapElapsedTimer);
+            closeMapSSE();
+        });
+
+        let currentMode = 'wifi';
+        let aiChatHistory = [];  // persisted across messages for context
+        let lastAiCommand = null; // most recent parsed command from LLM
+
+        // Helper function to build full URL from hostname
+        function buildFullUrl(host) {
+            host = host.replace(/^https?:\/\//, '').replace(/:\d+.*$/, '').replace(/\/.*$/, '');
+            return `http://${host}:8000/execute`;
+        }
+
+        // Helper function to extract hostname from full URL
+        function extractHostname(fullUrl) {
+            try {
+                const match = fullUrl.match(/^https?:\/\/([^:\/]+)/);
+                return match ? match[1] : fullUrl;
+            } catch {
+                return fullUrl;
+            }
+        }
+
+        // Mode switcher
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('modeWifi').classList.toggle('active', mode === 'wifi');
+            document.getElementById('modeLora').classList.toggle('active', mode === 'lora');
+            document.getElementById('wifiConfig').classList.toggle('hidden', mode !== 'wifi');
+            document.getElementById('loraConfig').classList.toggle('hidden', mode !== 'lora');
+
+            // Update command type options based on mode
+            const commandTypeSelect = document.getElementById('commandType');
+            const currentValue = commandTypeSelect.value;
+            const readFileOption = commandTypeSelect.querySelector('option[value="read_file"]');
+            const readImageOption = commandTypeSelect.querySelector('option[value="read_image"]');
+
+            if (mode === 'lora') {
+                // Hide read options in LoRA mode
+                if (readFileOption) readFileOption.style.display = 'none';
+                if (readImageOption) readImageOption.style.display = 'none';
+
+                // If currently on a read option, switch to bash_command
+                if (currentValue === 'read_file' || currentValue === 'read_image') {
+                    commandTypeSelect.value = 'bash_command';
+                    commandTypeSelect.dispatchEvent(new Event('change'));
+                }
+            } else {
+                // Show all options in WiFi mode
+                if (readFileOption) readFileOption.style.display = '';
+                if (readImageOption) readImageOption.style.display = '';
+            }
+
+            // Sync rover card mode text and telemetry badge
+            const rMode = document.getElementById('roverModeText');
+            if (rMode) { rMode.textContent = mode === 'wifi' ? 'WiFi' : 'LoRa'; rMode.className = mode === 'wifi' ? 'val blue' : 'val'; }
+            const badge = document.getElementById('telemModeBadge');
+            if (badge) { badge.textContent = mode === 'wifi' ? 'WiFi' : 'LoRa'; badge.className = mode === 'wifi' ? 'mode-badge' : 'mode-badge lora'; }
+            updateConfig();
+        }
+
+        // Update server configuration
+        document.getElementById('serverUrl').addEventListener('change', updateConfig);
+        document.getElementById('timeout').addEventListener('change', updateConfig);
+        document.getElementById('loraDestination').addEventListener('change', updateConfig);
+
+        function updateConfig() {
+            const host = document.getElementById('serverUrl').value;
+            const fullUrl = buildFullUrl(host);
+
+            fetch('/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    server_url: fullUrl,
+                    timeout: parseInt(document.getElementById('timeout').value),
+                    mode: currentMode,
+                    lora_destination: parseInt(document.getElementById('loraDestination').value)
+                })
+            });
+        }
+
+        function saveConfig() {
+            const host = document.getElementById('serverUrl').value;
+            const fullUrl = buildFullUrl(host);
+            const jetsonWs = document.getElementById('jetsonWsUrl').value;
+            fetch('/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    server_url: fullUrl,
+                    timeout: parseInt(document.getElementById('timeout').value),
+                    mode: currentMode,
+                    lora_destination: parseInt(document.getElementById('loraDestination').value),
+                    jetson_ws_url: jetsonWs || undefined
+                })
+            }).then(() => {
+                const btn = document.querySelector('.config-save-btn');
+                if (btn) { btn.textContent = 'Saved ✓'; setTimeout(() => { btn.textContent = 'Save Config'; }, 1500); }
+                // Update jetson address display
+                const jWs = document.getElementById('jetsonWsText');
+                if (jWs && jetsonWs) jWs.textContent = jetsonWs.replace('ws://', '').split(':')[0] + ':9001';
+            }).catch(() => {
+                const btn = document.querySelector('.config-save-btn');
+                if (btn) { btn.textContent = 'Error'; setTimeout(() => { btn.textContent = 'Save Config'; }, 1500); }
+            });
+        }
+
+        // Load current configuration
+        fetch('/config')
+            .then(response => response.json())
+            .then(data => {
+                const host = extractHostname(data.server_url);
+                document.getElementById('serverUrl').value = host;
+                document.getElementById('timeout').value = data.timeout;
+                document.getElementById('loraDestination').value = data.lora_destination || 0;
+                if (data.jetson_ws_url) {
+                    document.getElementById('jetsonWsUrl').value = data.jetson_ws_url;
+                    const jWs = document.getElementById('jetsonWsText');
+                    if (jWs) jWs.textContent = data.jetson_ws_url.replace('ws://', '').split('/')[0];
+                }
+                const rAddr = document.getElementById('roverAddressText');
+                if (rAddr) rAddr.textContent = host;
+                if (data.mode) setMode(data.mode);
+            });
+
+        // Handle command type change
+        document.getElementById('commandType').addEventListener('change', function() {
+            const selectedType = this.value;
+
+            // Hide all field groups
+            document.querySelectorAll('.field-group').forEach(group => {
+                group.classList.add('hidden');
+            });
+
+            // Show selected field group
+            document.getElementById('fields_' + selectedType).classList.remove('hidden');
+        });
+
+        // Format and display response in field boxes
+        function displayResponse(data, isError = false) {
+            const responseContent = document.getElementById('responseContent');
+            responseContent.innerHTML = '';
+
+            if (isError) {
+                responseContent.classList.remove('success');
+                responseContent.classList.add('error');
+            } else {
+                responseContent.classList.remove('error');
+                responseContent.classList.add('success');
+            }
+
+            // Create field boxes for each key-value pair
+            Object.entries(data).forEach(([key, value]) => {
+                const fieldBox = document.createElement('div');
+                fieldBox.className = 'response-field';
+
+                const label = document.createElement('div');
+                label.className = 'field-label';
+                label.textContent = key;
+
+                // Special handling for image data
+                if (key === 'image_data' && data.mime_type) {
+                    const imageContainer = document.createElement('div');
+                    imageContainer.className = 'image-container';
+
+                    const img = document.createElement('img');
+                    img.src = `data:${data.mime_type};base64,${value}`;
+                    img.alt = data.file_name || 'Image';
+
+                    fieldBox.appendChild(label);
+                    imageContainer.appendChild(img);
+                    fieldBox.appendChild(imageContainer);
+                    responseContent.appendChild(fieldBox);
+                    return;
+                }
+
+                const valueDiv = document.createElement('div');
+                valueDiv.className = 'field-value';
+
+                // Format the value
+                let formattedValue;
+                if (typeof value === 'object') {
+                    formattedValue = JSON.stringify(value, null, 2);
+                } else if (typeof value === 'string') {
+                    // Keep the actual newlines for display
+                    formattedValue = value;
+                } else {
+                    formattedValue = String(value);
+                }
+
+                valueDiv.textContent = formattedValue;
+
+                // Check if content is more than 5 lines
+                const lineCount = formattedValue.split('\n').length;
+
+                if (lineCount === 1) {
+                    // Single line - display inline
+                    fieldBox.classList.add('inline');
+                    label.classList.add('inline');
+                    valueDiv.classList.add('inline');
+                    label.textContent = key + ':';
+
+                    fieldBox.appendChild(label);
+                    fieldBox.appendChild(valueDiv);
+                } else if (lineCount > 5) {
+                    // Multi-line with collapse
+                    valueDiv.classList.add('collapsed');
+
+                    const expandBtn = document.createElement('button');
+                    expandBtn.className = 'expand-btn';
+                    expandBtn.textContent = 'Show More';
+                    expandBtn.onclick = function() {
+                        if (valueDiv.classList.contains('collapsed')) {
+                            valueDiv.classList.remove('collapsed');
+                            expandBtn.textContent = 'Show Less';
+                        } else {
+                            valueDiv.classList.add('collapsed');
+                            expandBtn.textContent = 'Show More';
+                        }
+                    };
+
+                    fieldBox.appendChild(label);
+                    fieldBox.appendChild(valueDiv);
+                    fieldBox.appendChild(expandBtn);
+                } else {
+                    // Multi-line but short (2-5 lines)
+                    fieldBox.appendChild(label);
+                    fieldBox.appendChild(valueDiv);
+                }
+
+                responseContent.appendChild(fieldBox);
+            });
+        }
+
+        // Send command to server
+        async function sendCommand() {
+            const commandType = document.getElementById('commandType').value;
+            const btn = document.getElementById('sendBtn');
+            const responseSection = document.getElementById('responseSection');
+            const statusIndicator = document.getElementById('statusIndicator');
+
+            // Build payload based on command type
+            let payload = {
+                type: commandType,
+                mode: currentMode,
+                timeout: parseInt(document.getElementById('timeout').value),
+                lora_destination: parseInt(document.getElementById('loraDestination').value)
+            };
+
+            switch(commandType) {
+                case 'bash_command':
+                    payload.command = document.getElementById('command').value;
+                    if (!payload.command) {
+                        alert('Please enter a command');
+                        return;
+                    }
+                    break;
+
+                case 'edit_file':
+                    payload.file_name = document.getElementById('edit_file_name').value;
+                    payload.file_content = document.getElementById('file_content').value;
+                    if (!payload.file_name) {
+                        alert('Please enter a file name');
+                        return;
+                    }
+                    break;
+
+                case 'basic_action':
+                    payload.action = document.getElementById('action').value;
+                    if (!payload.action) {
+                        alert('Please enter Python code');
+                        return;
+                    }
+                    break;
+
+                case 'read_file':
+                    payload.file_name = document.getElementById('read_file_name').value;
+                    if (!payload.file_name) {
+                        alert('Please enter a file name');
+                        return;
+                    }
+                    break;
+
+                case 'read_image':
+                    payload.file_name = document.getElementById('image_file_name').value;
+                    if (!payload.file_name) {
+                        alert('Please enter an image file path');
+                        return;
+                    }
+                    break;
+            }
+
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('/send_command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                // Show response
+                responseSection.classList.add('show');
+
+                if (result.success) {
+                    displayResponse(result.data, false);
+                    statusIndicator.classList.remove('status-offline');
+                    statusIndicator.classList.add('status-online');
+                    _setRoverStatus(true);
+                } else {
+                    displayResponse({ error: result.error }, true);
+                    statusIndicator.classList.remove('status-online');
+                    statusIndicator.classList.add('status-offline');
+                    _setRoverStatus(false);
+                }
+            } catch (error) {
+                responseSection.classList.add('show');
+                displayResponse({ error: error.message }, true);
+                statusIndicator.classList.remove('status-online');
+                statusIndicator.classList.add('status-offline');
+                _setRoverStatus(false);
+            } finally {
+                // Re-enable button
+                btn.disabled = false;
+                btn.textContent = 'Send Command';
+            }
+        }
+
+        /* ── AI Assistant functions ── */
+
+        function openAiModal() {
+            document.getElementById('aiOverlay').classList.add('open');
+            document.getElementById('aiInput').focus();
+        }
+
+        function closeAiModal() {
+            document.getElementById('aiOverlay').classList.remove('open');
+        }
+
+        function clearAiChat() {
+            aiChatHistory = [];
+            lastAiCommand = null;
+            document.getElementById('aiChatLog').innerHTML = '';
+        }
+
+        // Append a message bubble to the chat log
+        function appendAiMsg(html, cls) {
+            const log = document.getElementById('aiChatLog');
+            const div = document.createElement('div');
+            div.className = 'ai-msg ' + cls;
+            div.innerHTML = html;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+            return div;
+        }
+
+        // Autofill the main form with AI-generated command
+        function autofillCommand(cmd) {
+            if (!cmd) return;
+
+            const typeSelect = document.getElementById('commandType');
+            typeSelect.value = cmd.type;
+            typeSelect.dispatchEvent(new Event('change'));
+
+            const fields = cmd.fields || {};
+
+            switch (cmd.type) {
+                case 'bash_command':
+                    document.getElementById('command').value = fields.command || '';
+                    break;
+                case 'edit_file':
+                    document.getElementById('edit_file_name').value = fields.file_name || '';
+                    document.getElementById('file_content').value = fields.file_content || '';
+                    break;
+                case 'basic_action':
+                    document.getElementById('action').value = fields.action || '';
+                    break;
+                case 'read_file':
+                    document.getElementById('read_file_name').value = fields.file_name || '';
+                    break;
+                case 'read_image':
+                    document.getElementById('image_file_name').value = fields.file_name || '';
+                    break;
+            }
+        }
+
+        // Main AI send handler — streams SSE from /ai_command
+        async function sendAiMessage() {
+            const input = document.getElementById('aiInput');
+            const sendBtn = document.getElementById('aiSendBtn');
+            const message = input.value.trim();
+            if (!message) return;
+
+            console.log('[AI] Starting message send:', message.substring(0, 50) + '...');
+            const t0 = performance.now();
+
+            // Show user message
+            appendAiMsg(escapeHtml(message), 'user');
+            input.value = '';
+            sendBtn.disabled = true;
+
+            // Add to history for context
+            aiChatHistory.push({ role: 'user', content: message });
+
+            let thinkingDiv = null;
+            let thinkingBody = null;
+            let contentDiv = null;
+            let thinkingText = '';
+            let contentText = '';
+            let thinkingStartTime = null;
+            let thinkingTimerInterval = null;
+            let thinkingTimerEl = null;
+
+            try {
+                const fetchStart = performance.now();
+                console.log('[AI] Initiating fetch to /ai_command at', (fetchStart - t0).toFixed(0), 'ms');
+
+                const response = await fetch('/ai_command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        history: aiChatHistory.slice(0, -1), // history before this message
+                        mode: currentMode
+                    })
+                });
+
+                const fetchEnd = performance.now();
+                console.log('[AI] Fetch completed, starting stream at', (fetchEnd - t0).toFixed(0), 'ms');
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Process complete SSE lines
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        let evt;
+                        try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+
+                        switch (evt.type) {
+                            case 'thinking_start':
+                                thinkingStartTime = Date.now();
+                                thinkingDiv = appendAiMsg(
+                                    '<div class="thinking-header"><span>Thinking…</span><span class="thinking-timer" id="thinkTimer">0s</span></div><div class="thinking-body"></div>',
+                                    'assistant thinking'
+                                );
+                                thinkingBody = thinkingDiv.querySelector('.thinking-body');
+                                thinkingTimerEl = thinkingDiv.querySelector('#thinkTimer');
+                                thinkingTimerInterval = setInterval(() => {
+                                    if (thinkingTimerEl && thinkingStartTime) {
+                                        const elapsed = Math.round((Date.now() - thinkingStartTime) / 1000);
+                                        thinkingTimerEl.textContent = elapsed + 's';
+                                    }
+                                }, 1000);
+                                break;
+
+                            case 'thinking':
+                                thinkingText += evt.content;
+                                if (thinkingBody) {
+                                    thinkingBody.textContent = thinkingText;
+                                    thinkingBody.scrollTop = thinkingBody.scrollHeight;
+                                }
+                                document.getElementById('aiChatLog').scrollTop = document.getElementById('aiChatLog').scrollHeight;
+                                break;
+
+                            case 'thinking_end':
+                                // Stop the timer
+                                if (thinkingTimerInterval) {
+                                    clearInterval(thinkingTimerInterval);
+                                    thinkingTimerInterval = null;
+                                }
+                                if (thinkingTimerEl && thinkingStartTime) {
+                                    const totalSec = Math.round((Date.now() - thinkingStartTime) / 1000);
+                                    thinkingTimerEl.textContent = totalSec + 's';
+                                }
+                                // Default to collapsed with toggle
+                                const toggle = document.createElement('button');
+                                toggle.className = 'thinking-toggle';
+                                toggle.textContent = 'Show more';
+                                toggle.onclick = () => {
+                                    thinkingBody.classList.toggle('expanded');
+                                    toggle.textContent = thinkingBody.classList.contains('expanded') ? 'Show less' : 'Show more';
+                                };
+                                if (thinkingDiv) thinkingDiv.appendChild(toggle);
+                                break;
+
+                            case 'content':
+                                contentText += evt.content;
+                                // We don't render raw JSON to user — wait for result
+                                break;
+
+                            case 'result': {
+                                lastAiCommand = evt.command;
+                                const cmd = evt.command;
+
+                                // Format the command result nicely
+                                let displayHtml = `<div style="font-weight:600;color:var(--blue);margin-bottom:8px;">Command Type: ${escapeHtml(cmd.type)}</div>`;
+
+                                // Display fields
+                                Object.entries(cmd.fields || {}).forEach(([key, value]) => {
+                                    displayHtml += `<div style="margin-bottom:8px;">`;
+                                    displayHtml += `<div style="font-size:11px;color:var(--blue);font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">${escapeHtml(key)}</div>`;
+
+                                    // Special formatting for code (action field)
+                                    if (key === 'action' && typeof value === 'string') {
+                                        // Display Python code with proper formatting
+                                        const codePreview = value.split('\n').slice(0, 8).join('\n');
+                                        const hasMore = value.split('\n').length > 8;
+                                        displayHtml += `<pre style="background:var(--bg);padding:8px;border-radius:6px;font-size:12px;font-family:'JetBrains Mono',monospace;overflow-x:auto;margin:0;border:1px solid var(--border);">${escapeHtml(codePreview)}${hasMore ? '\n...' : ''}</pre>`;
+                                    } else {
+                                        // Regular field display
+                                        const preview = value.length > 200 ? value.slice(0, 200) + '…' : value;
+                                        displayHtml += `<div style="color:var(--text-muted);font-size:13px;">${escapeHtml(preview)}</div>`;
+                                    }
+                                    displayHtml += `</div>`;
+                                });
+
+                                const msgDiv = appendAiMsg(displayHtml, 'assistant');
+
+                                // Autofill bar
+                                const bar = document.createElement('div');
+                                bar.className = 'ai-autofill-bar';
+
+                                const applyBtn = document.createElement('button');
+                                applyBtn.className = 'ai-autofill-btn apply';
+                                applyBtn.textContent = 'Apply to Form';
+                                applyBtn.onclick = () => {
+                                    autofillCommand(lastAiCommand);
+                                    closeAiModal();
+                                };
+
+                                const dismissBtn = document.createElement('button');
+                                dismissBtn.className = 'ai-autofill-btn dismiss';
+                                dismissBtn.textContent = 'Dismiss';
+                                dismissBtn.onclick = () => bar.remove();
+
+                                bar.appendChild(applyBtn);
+                                bar.appendChild(dismissBtn);
+                                msgDiv.appendChild(bar);
+
+                                // Save assistant response to history
+                                aiChatHistory.push({ role: 'assistant', content: contentText });
+                                break;
+                            }
+
+                            case 'error':
+                                appendAiMsg(escapeHtml(evt.error), 'assistant error');
+                                break;
+
+                            case 'done':
+                                break;
+                        }
+                    }
+                }
+            } catch (err) {
+                appendAiMsg('Connection error: ' + escapeHtml(err.message), 'assistant error');
+            } finally {
+                if (thinkingTimerInterval) clearInterval(thinkingTimerInterval);
+                sendBtn.disabled = false;
+                document.getElementById('aiInput').focus();
+            }
+        }
+
+        function escapeHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+    </script>
+</body>
+</html>
