@@ -23,6 +23,6 @@ class RockerBogie:
 if __name__ == "__main__":
     import time
     rocker_bogie = RockerBogie()
-    rocker_bogie.toSunPosition()
-    time.sleep(2)
     rocker_bogie.toRegularPosition()
+    time.sleep(2)
+    rocker_bogie.toSunPosition()

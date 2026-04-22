@@ -8,9 +8,9 @@ servo_hat:
   i2c_address: 0x40
 
 rocker_bogie:
-  channels: [0, 1, 2, 3]
-  sun_position: [150, 35, 90, 90]
-  regular_position: [90, 90, 150, 30]
+  channels: [0, 15, 1, 14]
+  sun_position: [130, 50, 120, 60]
+  regular_position: [90, 90, 60, 120]
 
 drivetrain:
   motors:
