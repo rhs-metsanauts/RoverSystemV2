@@ -27,7 +27,7 @@ class Drivetrain:
         # set the power of the left and right motors using the pi servo hat
         # left_power and right_power are expected to be in the range of -1.0 to 1.0, where 0.0 is stopped, -1.0 is full reverse, and 1.0 is full forward
         self.hat.move_servo_position(self.left_channel, left_power*50 +50)
-        self.hat.move_servo_position(self.right_channel, right_power*50 +50)
+        self.hat.move_servo_position(self.right_channel, -right_power*50 +50)
 
 
 if __name__ == "__main__":
