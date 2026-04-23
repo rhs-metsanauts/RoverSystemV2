@@ -17,11 +17,14 @@ except ImportError:
 
 import websockets
 import websockets.exceptions
+import cv2
 
 VOXEL_SIZE   = 0.05   # metres — 5 cm grid
 WS_PORT      = 9001
 REQUEST_EVERY = 30    # request new mesh every N grabs
 BROADCAST_INTERVAL = 0.5  # seconds between WebSocket updates
+MAX_MESH_VERTICES = 20000
+MAX_MESH_TRIANGLES = 40000
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -44,7 +47,7 @@ def voxel_downsample(vertices, colors, voxel_size=VOXEL_SIZE):
     return vertices[keep], colors[keep], set(seen.keys())
 
 
-def height_colors(vertices):
+def fallback_colors(vertices):
     if len(vertices) == 0:
         return np.zeros((0, 3), dtype=np.float32)
     y = vertices[:, 1]
@@ -55,6 +58,39 @@ def height_colors(vertices):
     g = np.clip(1.0 - np.abs(t * 2.0 - 1.0), 0.0, 1.0)
     b = np.clip(1.0 - t * 2.0, 0.0, 1.0)
     return np.stack([r, g, b], axis=1).astype(np.float32)
+
+
+def _packed_to_rgb(packed):
+    packed_u32 = np.asarray(packed).view(np.uint32)
+    # ZED packed color is typically little-endian BGRA when read as uint32.
+    b = ((packed_u32 >> 0) & 0xFF).astype(np.float32)
+    g = ((packed_u32 >> 8) & 0xFF).astype(np.float32)
+    r = ((packed_u32 >> 16) & 0xFF).astype(np.float32)
+    rgb = np.stack([r, g, b], axis=1) / 255.0
+    return np.clip(rgb, 0.0, 1.0).astype(np.float32)
+
+
+def extract_actual_colors(spatial_map, vertices, valid_mask=None):
+    """Extract RGB colors from spatial map, with safe fallback if unavailable."""
+    raw_colors = getattr(spatial_map, "colors", None)
+
+    if raw_colors is not None:
+        arr = np.asarray(raw_colors)
+        if valid_mask is not None and len(valid_mask) == len(arr):
+            arr = arr[valid_mask]
+        if arr.ndim == 2 and arr.shape[1] >= 3:
+            rgb = arr[:, :3].astype(np.float32)
+            if rgb.max(initial=0.0) > 1.0:
+                rgb /= 255.0
+            if len(rgb) == len(vertices):
+                return np.clip(rgb, 0.0, 1.0)
+        if arr.ndim == 1 and len(arr) == len(vertices):
+            return _packed_to_rgb(arr)
+
+    if vertices.ndim == 2 and vertices.shape[1] >= 4:
+        return _packed_to_rgb(vertices[:, 3].astype(np.float32))
+
+    return fallback_colors(vertices)
 
 
 class VoxelTracker:
@@ -110,12 +146,18 @@ class ZedMapper:
         if status != sl.ERROR_CODE.SUCCESS:
             raise RuntimeError(f"Tracking failed: {status}")
 
+        # runtime helpers for extra features
+        self.runtime_params = sl.RuntimeParameters()
+        self._pose = sl.Pose()
+        self._spatial_map = sl.Mesh()
+        self._image = sl.Mat()
+
         self._enable_mapping()
         print("[ZedMapper] ZED 2i initialised, spatial mapping enabled")
 
     def _enable_mapping(self):
         mp = sl.SpatialMappingParameters()
-        mp.map_type = sl.SPATIAL_MAP_TYPE.FUSED_POINT_CLOUD  # more reliable than Mesh in SDK 4.x
+        mp.map_type = sl.SPATIAL_MAP_TYPE.MESH
         mp.resolution_meter = VOXEL_SIZE
         mp.range_meter = 8.0
         status = self.zed.enable_spatial_mapping(mp)
@@ -123,27 +165,156 @@ class ZedMapper:
             raise RuntimeError(f"Spatial mapping failed: {status}")
 
     def _get_rover_pos(self):
-        pose = sl.Pose()
-        state = self.zed.get_position(pose, sl.REFERENCE_FRAME.WORLD)
+        state = self.zed.get_position(self._pose, sl.REFERENCE_FRAME.WORLD)
         if state == sl.POSITIONAL_TRACKING_STATE.OK:
-            t = pose.get_translation(sl.Translation())
+            t = self._pose.get_translation(sl.Translation())
             v = t.get()
             return [round(float(v[0]), 4), round(float(v[1]), 4), round(float(v[2]), 4)]
         return [0.0, 0.0, 0.0]
 
-    def _get_points(self):
-        """Retrieve current fused point cloud, downsample, return new points."""
-        fpc = sl.FusedPointCloud()
-        self.zed.extract_whole_spatial_map(fpc)
+    def get_position(self):
+        """Return current pose including Euler angles."""
+        state = self.zed.get_position(self._pose, sl.REFERENCE_FRAME.WORLD)
+        if state == sl.POSITIONAL_TRACKING_STATE.OK:
+            t = self._pose.get_translation(sl.Translation()).get()
+            rot = self._pose.get_euler_angles()  # roll, pitch, yaw
+            return {
+                "position": {"x": float(t[0]), "y": float(t[1]), "z": float(t[2])},
+                "rotation": {"roll": float(rot[0]), "pitch": float(rot[1]), "yaw": float(rot[2])},
+                "tracking_state": str(state),
+            }
+        return {"position": {"x": 0.0, "y": 0.0, "z": 0.0}, "rotation": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}, "tracking_state": str(state)}
 
-        raw = fpc.vertices
+    def _get_points(self):
+        """Retrieve current mesh vertices, downsample, return new points."""
+        self.zed.extract_whole_spatial_map(self._spatial_map)
+
+        raw = self._spatial_map.vertices
         if raw is None or len(raw) == 0:
             return []
 
         vertices = np.array(raw, dtype=np.float32)
-        colors = height_colors(vertices)
+
+        # Keep only numerically valid XYZ points.
+        valid = np.isfinite(vertices[:, 0]) & np.isfinite(vertices[:, 1]) & np.isfinite(vertices[:, 2])
+        vertices = vertices[valid]
+        if len(vertices) == 0:
+            return []
+
+        colors = extract_actual_colors(self._spatial_map, vertices, valid)
         v_down, c_down, _ = voxel_downsample(vertices, colors)
         return self.tracker.get_new_points(v_down, c_down)
+
+    def get_mesh(self, max_vertices=MAX_MESH_VERTICES, max_triangles=MAX_MESH_TRIANGLES) -> dict:
+        """Return a compact mesh payload with vertices and triangles for rendering."""
+        self.zed.extract_whole_spatial_map(self._spatial_map)
+
+        raw_vertices = self._spatial_map.vertices
+        raw_triangles = getattr(self._spatial_map, "triangles", None)
+
+        if raw_vertices is None or len(raw_vertices) == 0:
+            return {"vertices": [], "triangles": [], "robot": self.get_position()["position"]}
+
+        vertices = np.array(raw_vertices, dtype=np.float32)
+        valid = np.isfinite(vertices[:, 0]) & np.isfinite(vertices[:, 1]) & np.isfinite(vertices[:, 2])
+        vertices = vertices[valid]
+        if len(vertices) == 0:
+            return {"vertices": [], "triangles": [], "robot": self.get_position()["position"]}
+
+        if len(vertices) > max_vertices:
+            step = max(1, len(vertices) // max_vertices)
+            vertices = vertices[::step]
+
+        triangles = np.zeros((0, 3), dtype=np.int32)
+        if raw_triangles is not None and len(raw_triangles) > 0:
+            tri = np.array(raw_triangles, dtype=np.int32)
+            if tri.ndim == 1 and len(tri) % 3 == 0:
+                tri = tri.reshape(-1, 3)
+            if tri.ndim == 2 and tri.shape[1] >= 3:
+                tri = tri[:, :3]
+                tri = tri[(tri[:, 0] < len(vertices)) & (tri[:, 1] < len(vertices)) & (tri[:, 2] < len(vertices))]
+                if len(tri) > max_triangles:
+                    tri_step = max(1, len(tri) // max_triangles)
+                    tri = tri[::tri_step]
+                triangles = tri.astype(np.int32)
+
+        compact_vertices = [[round(float(v[0]), 4), round(float(v[1]), 4), round(float(v[2]), 4)] for v in vertices]
+        compact_triangles = [[int(t[0]), int(t[1]), int(t[2])] for t in triangles]
+
+        return {
+            "vertices": compact_vertices,
+            "triangles": compact_triangles,
+            "robot": self.get_position()["position"],
+        }
+
+    # ------------------------------------------------------------------
+    # 2-D map / HTTP streaming helpers (compatible with ZedCamera interface)
+    # ------------------------------------------------------------------
+
+    def get_map_2d(self) -> dict:
+        """Project fused point cloud to X-Z plane and return a compact map snapshot."""
+        self.zed.extract_whole_spatial_map(self._spatial_map)
+        raw_vertices = self._spatial_map.vertices
+
+        points = []
+        if raw_vertices is not None and len(raw_vertices) > 0:
+            vertices = np.array(raw_vertices, dtype=np.float32)
+            valid = np.isfinite(vertices[:, 0]) & np.isfinite(vertices[:, 1]) & np.isfinite(vertices[:, 2])
+            vertices = vertices[valid]
+            if len(vertices) == 0:
+                return {"points": points, "robot": {"x": 0.0, "z": 0.0, "yaw": 0.0}}
+
+            colors = extract_actual_colors(self._spatial_map, vertices, valid)
+
+            # Keep map points in a practical scene band and mark object points above floor.
+            mask = (vertices[:, 1] > -0.1) & (vertices[:, 1] < 2.5)
+            filtered = vertices[mask]
+            filtered_colors = colors[mask]
+            step = max(1, len(filtered) // 5000)
+            sampled = filtered[::step]
+            sampled_colors = filtered_colors[::step]
+
+            for i in range(len(sampled)):
+                p = sampled[i]
+                c = sampled_colors[i]
+                points.append({
+                    "x": float(p[0]),
+                    "z": float(p[2]),
+                    "y": float(p[1]),
+                    "r": int(np.clip(c[0], 0.0, 1.0) * 255),
+                    "g": int(np.clip(c[1], 0.0, 1.0) * 255),
+                    "b": int(np.clip(c[2], 0.0, 1.0) * 255),
+                    "kind": "object" if float(p[1]) > 0.15 else "floor",
+                })
+
+        rover_pos = {"x": 0.0, "z": 0.0, "yaw": 0.0}
+        pos = self.get_position()
+        rover_pos["x"] = pos["position"]["x"]
+        rover_pos["z"] = pos["position"]["z"]
+        rover_pos["yaw"] = pos["rotation"]["yaw"]
+
+        return {"points": points, "robot": rover_pos}
+
+    def generate_frames(self):
+        """Yield JPEG frames from left camera for HTTP multipart streaming."""
+        while True:
+            if self.zed.grab(self.runtime_params) == sl.ERROR_CODE.SUCCESS:
+                self.zed.retrieve_image(self._image, sl.VIEW.LEFT)
+                frame = self._image.get_data()
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                _, buffer = cv2.imencode('.jpg', frame_bgr)
+                yield (
+                    b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n'
+                    + buffer.tobytes()
+                    + b'\r\n'
+                )
+
+    def save_area_map(self, path: str = "zed_area.area"):
+        self.zed.save_area_map(path)
+
+    def load_area_map(self, path: str = "zed_area.area"):
+        self.zed.load_area_map(path)
 
     # ── WebSocket ─────────────────────────────────────────────────────────────
 

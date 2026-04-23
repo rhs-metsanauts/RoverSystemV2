@@ -25,4 +25,4 @@ if __name__ == "__main__":
     rocker_bogie = RockerBogie()
     rocker_bogie.toRegularPosition()
     time.sleep(2)
-    rocker_bogie.toSunPosition()
+    #rocker_bogie.toSunPosition()

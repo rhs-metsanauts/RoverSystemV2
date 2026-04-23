@@ -15,9 +15,9 @@ rocker_bogie:
 drivetrain:
   motors:
     left:
-      channel: 4
+      channel: 3
     right:
-      channel: 5
+      channel: 12
 
 usb_camera:
   pan:

@@ -91,7 +91,7 @@ class ZedCamera:
         plus the current robot position for overlay.
         """
         self.zed.extract_whole_spatial_map(self._point_cloud_map)
-        vertices = np.array(self._point_cloud_map.vertices.get())
+        vertices = self._point_cloud_map.vertices
 
         points = []
         if len(vertices) > 0:

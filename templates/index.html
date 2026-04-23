@@ -924,8 +924,11 @@
         /* ── Three.js map globals ── */
         let threeScene, threeCamera, threeRenderer, threeControls;
         let pointGeometry, positionArray, colorArray;
+        let meshGeometry, meshObject;
         let pointCount = 0;
         const MAX_POINTS = 600000;
+        const MAX_MESH_VERTICES = 20000;
+        const MAX_MESH_TRIANGLES = 40000;
         let mapInitialised = false;
 
         function initThreeJS() {
@@ -970,6 +973,24 @@
             });
             threeScene.add(new THREE.Points(pointGeometry, pointMaterial));
 
+            meshGeometry = new THREE.BufferGeometry();
+            const meshMaterial = new THREE.MeshStandardMaterial({
+                color: 0x8ec5ff,
+                metalness: 0.05,
+                roughness: 0.85,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.88,
+            });
+            meshObject = new THREE.Mesh(meshGeometry, meshMaterial);
+            threeScene.add(meshObject);
+
+            const hemi = new THREE.HemisphereLight(0xaac8ff, 0x152438, 0.9);
+            threeScene.add(hemi);
+            const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+            dir.position.set(3, 6, 2);
+            threeScene.add(dir);
+
             window.addEventListener('resize', () => {
                 if (document.getElementById('tab-map').classList.contains('hidden')) return;
                 const nW = wrap.clientWidth;
@@ -1002,6 +1023,7 @@
         let mapSSE = null;
         let mapStartTime = null;
         let mapElapsedTimer = null;
+        let meshPollTimer = null;
         let mapMinX = Infinity, mapMaxX = -Infinity;
         let mapMinZ = Infinity, mapMaxZ = -Infinity;
 
@@ -1049,11 +1071,63 @@
             document.getElementById('mapCoverage').textContent = '0.0';
         }
 
-        const ORIN_WS_URL = 'ws://192.168.55.1:9001';
+        function updateMeshGeometry(meshData) {
+            if (!mapInitialised || !meshGeometry) return;
+            const verts = (meshData && meshData.vertices) ? meshData.vertices : [];
+            const tris = (meshData && meshData.triangles) ? meshData.triangles : [];
+
+            if (!verts.length || !tris.length) {
+                meshGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                meshGeometry.setIndex([]);
+                meshGeometry.computeVertexNormals();
+                return;
+            }
+
+            const vLimited = verts.slice(0, MAX_MESH_VERTICES);
+            const pos = new Float32Array(vLimited.length * 3);
+            for (let i = 0; i < vLimited.length; i++) {
+                const p = vLimited[i];
+                const b = i * 3;
+                pos[b] = p[0];
+                pos[b + 1] = p[1];
+                pos[b + 2] = p[2];
+            }
+
+            const triLimited = tris.slice(0, MAX_MESH_TRIANGLES).filter(t => t[0] < vLimited.length && t[1] < vLimited.length && t[2] < vLimited.length);
+            const idx = new Uint32Array(triLimited.length * 3);
+            for (let i = 0; i < triLimited.length; i++) {
+                const t = triLimited[i];
+                const b = i * 3;
+                idx[b] = t[0];
+                idx[b + 1] = t[1];
+                idx[b + 2] = t[2];
+            }
+
+            meshGeometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            meshGeometry.setIndex(new THREE.BufferAttribute(idx, 1));
+            meshGeometry.computeVertexNormals();
+        }
+
+        function resetMeshGeometry() {
+            if (!mapInitialised || !meshGeometry) return;
+            meshGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+            meshGeometry.setIndex([]);
+            meshGeometry.computeVertexNormals();
+        }
+
+        function fetchAndRenderMesh() {
+            fetch('/mesh')
+                .then(r => r.json())
+                .then(data => updateMeshGeometry(data))
+                .catch(() => {});
+        }
+
+        let ORIN_WS_URL = 'ws://127.0.0.1:9001';
         let mapWS = null;
 
         function openMapSSE() {
             if (mapWS && mapWS.readyState === WebSocket.OPEN) return;
+            ORIN_WS_URL = document.getElementById('jetsonWsUrl').value || ORIN_WS_URL;
             mapWS = new WebSocket(ORIN_WS_URL);
             mapWS.onopen = function() {
                 document.getElementById('mapStatusDot').className = 'map-status-dot connected';
@@ -1165,12 +1239,20 @@
         function startMapping() {
             openMapSSE();
             setTimeout(() => _sendMapAction('start'), 300);
+            fetchAndRenderMesh();
+            if (!meshPollTimer) {
+                meshPollTimer = setInterval(fetchAndRenderMesh, 1000);
+            }
             mapStartTime = Date.now();
             if (!mapElapsedTimer) mapElapsedTimer = setInterval(_updateElapsed, 1000);
         }
 
         function stopMapping() {
             _sendMapAction('stop');
+            if (meshPollTimer) {
+                clearInterval(meshPollTimer);
+                meshPollTimer = null;
+            }
             if (mapElapsedTimer) { clearInterval(mapElapsedTimer); mapElapsedTimer = null; }
         }
 
@@ -1178,6 +1260,7 @@
             _sendMapAction('clear');
             stopMapping();
             resetPointCloud();
+            resetMeshGeometry();
             resetMinimap();
             mapStartTime = null;
             document.getElementById('mapElapsed').textContent = '00:00';
@@ -1289,6 +1372,7 @@
         window.addEventListener('beforeunload', () => {
             clearInterval(_mapStatusInterval);
             if (mapElapsedTimer) clearInterval(mapElapsedTimer);
+            if (meshPollTimer) clearInterval(meshPollTimer);
             closeMapSSE();
         });
 

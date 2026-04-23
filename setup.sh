@@ -6,3 +6,4 @@ sudo pip3 install sparkfun-qwiic
 sudo pip3 install gpiozero
 sudo pip3 install pyyaml
 sudo pip3 install pyzed
+sudo pip3 install flask
