@@ -1,0 +1,347 @@
+:root {
+  --bg: #090d1a;
+  --panel: rgba(16, 28, 56, 0.78);
+  --panel-border: rgba(97, 138, 254, 0.25);
+  --text: #ecf2ff;
+  --muted: #a9b8df;
+  --accent: #60d5ff;
+  --accent-2: #8b74ff;
+  --good: #48f5a2;
+  --bad: #ff7285;
+  --shadow: 0 14px 44px rgba(0, 0, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at 12% 18%, #2b2f8f 0%, transparent 35%),
+    radial-gradient(circle at 88% 82%, #006b96 0%, transparent 37%),
+    linear-gradient(130deg, #050712, #0a1024 38%, #0a122d);
+  min-height: 100vh;
+}
+
+.layout {
+  max-width: 1250px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+
+.topbar {
+  padding: 18px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: "Orbitron", "Segoe UI", sans-serif;
+}
+
+h1 {
+  margin-top: 6px;
+  font-size: clamp(1.3rem, 1.8vw, 1.9rem);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+label {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+select,
+input,
+textarea {
+  border: 1px solid rgba(135, 155, 228, 0.38);
+  background: rgba(8, 18, 40, 0.78);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 0.95rem;
+}
+
+select,
+input {
+  min-width: 220px;
+}
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  color: #081225;
+  background: linear-gradient(130deg, var(--accent), #5cb9ff);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(96, 213, 255, 0.28);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid rgba(96, 213, 255, 0.6);
+  color: var(--accent);
+}
+
+.btn-soft {
+  color: var(--text);
+  background: rgba(139, 116, 255, 0.28);
+  border: 1px solid rgba(139, 116, 255, 0.55);
+}
+
+.grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  grid-template-areas:
+    "camera health"
+    "code health"
+    "output output";
+  gap: 16px;
+}
+
+.camera-panel {
+  grid-area: camera;
+  padding: 18px;
+}
+
+.camera-placeholder {
+  margin-top: 12px;
+  border: 1px dashed rgba(96, 213, 255, 0.55);
+  border-radius: 12px;
+  min-height: 250px;
+  display: grid;
+  place-items: center;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(12, 24, 52, 0.6),
+    rgba(12, 24, 52, 0.6) 15px,
+    rgba(14, 34, 66, 0.72) 15px,
+    rgba(14, 34, 66, 0.72) 30px
+  );
+}
+
+.placeholder-title {
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+}
+
+.health-panel {
+  grid-area: health;
+  padding: 18px;
+}
+
+.health-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.health-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.health-card {
+  background: rgba(8, 18, 40, 0.82);
+  border: 1px solid rgba(135, 155, 228, 0.3);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.health-card h3 {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.health-card p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.code-panel {
+  grid-area: code;
+  padding: 18px;
+}
+
+.subtext {
+  margin: 8px 0 12px;
+  color: var(--muted);
+}
+
+textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  font-family: "Consolas", "Courier New", monospace;
+  line-height: 1.45;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.row input {
+  min-width: 90px;
+  max-width: 120px;
+}
+
+.output-panel {
+  grid-area: output;
+  padding: 18px;
+}
+
+pre {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(6, 14, 30, 0.88);
+  border: 1px solid rgba(95, 139, 255, 0.27);
+  color: #d5e7ff;
+  white-space: pre-wrap;
+  min-height: 160px;
+}
+
+.message {
+  margin-top: 10px;
+  min-height: 1.2em;
+  color: var(--muted);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 16, 0.72);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: 18px;
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-height: min(88vh, 900px);
+  overflow: auto;
+  padding: 16px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-body {
+  margin-top: 10px;
+}
+
+.modal-steps {
+  margin: 10px 0;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+
+.modal-form-row {
+  display: grid;
+  gap: 8px;
+}
+
+.modal-form-row input {
+  min-width: 100%;
+}
+
+.modal-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.modal-command-block pre {
+  margin: 6px 0 0;
+  min-height: auto;
+}
+
+.hidden {
+  display: none;
+}
+
+.ok {
+  color: var(--good);
+}
+
+.error {
+  color: var(--bad);
+}
+
+@media (max-width: 1024px) {
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controls {
+    align-items: stretch;
+  }
+
+  .controls-row {
+    justify-content: flex-start;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "camera"
+      "health"
+      "code"
+      "output";
+  }
+}
