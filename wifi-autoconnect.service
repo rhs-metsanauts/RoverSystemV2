@@ -1,0 +1,13 @@
+[Unit]
+Description=Auto-connect to SKANDALAPTOP 6268
+After=network.target NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wifi_connect.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -45,6 +45,7 @@ class Rover:
 if __name__ == "__main__":
     import time
     rover = Rover()
+    time.sleep(2)
     rover.forwardForDuration(1, 2)
     rover.turnLeftForDuration(1, 1)
     rover.turnRightForDuration(1, 1)
