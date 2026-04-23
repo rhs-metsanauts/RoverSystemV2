@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rover Swarm Control</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Orbitron:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="topbar panel">
+        <div>
+          <p class="eyebrow">Laptop Mission Console</p>
+          <h1>Rover Swarm Command Center</h1>
+        </div>
+
+        <div class="controls">
+          <label for="rover-select">Active Rover</label>
+          <select id="rover-select"></select>
+          <div class="controls-row">
+            <button id="add-ip-btn" class="btn btn-soft">Add Rover IP</button>
+            <button id="rescan-btn" class="btn btn-soft">Rescan Devices</button>
+            <button id="ssh-btn" class="btn btn-outline">SSH Help</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="grid">
+        <article class="panel camera-panel">
+          <h2>Camera Feed</h2>
+          <div class="camera-placeholder" id="camera-placeholder">
+            <div>
+              <p class="placeholder-title">Video Placeholder</p>
+              <p id="camera-rover-name">Select a rover to begin.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel health-panel">
+          <div class="health-header">
+            <h2>Health Summary</h2>
+            <button id="refresh-health-btn" class="btn btn-soft">Refresh</button>
+          </div>
+
+          <div class="health-grid">
+            <div class="health-card">
+              <h3>Status</h3>
+              <p id="health-status">--</p>
+            </div>
+            <div class="health-card">
+              <h3>Max Temp</h3>
+              <p id="health-temp">--</p>
+            </div>
+            <div class="health-card">
+              <h3>CPU Load</h3>
+              <p id="health-cpu">--</p>
+            </div>
+            <div class="health-card">
+              <h3>Memory</h3>
+              <p id="health-memory">--</p>
+            </div>
+            <div class="health-card">
+              <h3>Disk</h3>
+              <p id="health-disk">--</p>
+            </div>
+          </div>
+
+          <p id="health-message" class="message"></p>
+        </article>
+
+        <article class="panel code-panel">
+          <h2>Python Command Pad</h2>
+          <p class="subtext">
+            Code runs on the currently selected rover via its `:8002/execute` endpoint.
+          </p>
+          <textarea
+            id="code-input"
+            spellcheck="false"
+            placeholder="# Example\nprint('Hello from rover')"
+          ></textarea>
+          <div class="row">
+            <label for="timeout-seconds">Timeout (s)</label>
+            <input id="timeout-seconds" type="number" min="1" max="600" step="1" value="60" />
+            <button id="execute-btn" class="btn">Execute on Rover</button>
+          </div>
+          <p id="execute-message" class="message"></p>
+        </article>
+
+        <article class="panel output-panel">
+          <h2>Execution Result</h2>
+          <pre id="execution-output">No execution yet.</pre>
+        </article>
+      </section>
+    </main>
+
+    <div id="modal-overlay" class="modal-overlay hidden" aria-hidden="true">
+      <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-header">
+          <h2 id="modal-title">Dialog</h2>
+          <button id="modal-close" class="btn btn-outline" type="button">Close</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+      </section>
+    </div>
+
+    <script>
+      window.__INITIAL_STATE__ = {
+        rovers: {{ rovers | tojson }},
+        activeRover: {{ active_rover | tojson }}
+      };
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  </body>
+</html>
