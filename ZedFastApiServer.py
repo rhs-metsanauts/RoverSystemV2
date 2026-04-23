@@ -45,13 +45,19 @@ class ZedStereoStream:
             if self._cap.isOpened():
                 self._cap.release()
 
-    def _read_stereo(self) -> tuple[np.ndarray, np.ndarray] | None:
+    def _read_frame(self) -> np.ndarray | None:
         with self._lock:
             if not self._running:
                 return None
             ok, frame = self._cap.read()
 
         if not ok or frame is None or frame.size == 0:
+            return None
+        return frame
+
+    def _read_stereo(self) -> tuple[np.ndarray, np.ndarray] | None:
+        frame = self._read_frame()
+        if frame is None:
             return None
 
         # ZED USB capture is side-by-side: left eye on one half, right eye on the other.
@@ -64,12 +70,16 @@ class ZedStereoStream:
         encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
 
         while self._running:
-            stereo = self._read_stereo()
-            if stereo is None:
-                continue
-
-            left, right = stereo
-            frame = left if eye == "left" else right
+            if eye == "full":
+                frame = self._read_frame()
+                if frame is None:
+                    continue
+            else:
+                stereo = self._read_stereo()
+                if stereo is None:
+                    continue
+                left, right = stereo
+                frame = left if eye == "left" else right
 
             ok, jpg = cv2.imencode(".jpg", frame, encode_params)
             if not ok:
@@ -123,6 +133,11 @@ def left_stream() -> StreamingResponse:
 @app.get("/right.mjpg")
 def right_stream() -> StreamingResponse:
     return _stream_response("right")
+
+
+@app.get("/video.mjpg")
+def full_stereo_stream() -> StreamingResponse:
+    return _stream_response("full")
 
 
 if __name__ == "__main__":
