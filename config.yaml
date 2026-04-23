@@ -29,3 +29,10 @@ usb_camera:
     min_angle: 0
     max_angle: 180
 
+zed_server:
+  resolution: HD720
+  fps: 30
+  jpeg_quality: 80
+  area_memory: false
+  pose_stream_hz: 10
+

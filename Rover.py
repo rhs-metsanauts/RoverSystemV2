@@ -47,6 +47,8 @@ if __name__ == "__main__":
     rover = Rover()
     time.sleep(2)
     rover.forwardForDuration(1, 2)
+    time.sleep(1)
     rover.turnLeftForDuration(1, 1)
+    time.sleep(1)
     rover.turnRightForDuration(1, 1)
     rover.stop()
