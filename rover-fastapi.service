@@ -1,0 +1,16 @@
+[Unit]
+Description=Rover FastAPI Control Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rover
+WorkingDirectory=/home/rover/Documents/RoverSystemV2
+ExecStart=/usr/bin/python /home/rover/Documents/RoverSystemV2/RoverFastApiServer.py
+Restart=always
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
