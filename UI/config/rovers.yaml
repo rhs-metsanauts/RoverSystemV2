@@ -3,10 +3,12 @@ rovers:
     host: rover0
     control_port: 8002
     camera_port: 8001
+    mapper_ws_port: 9001
     ssh_username: rover
 
   - name: rover1
     host: rover1
     control_port: 8002
     camera_port: 8001
+    mapper_ws_port: 9001
     ssh_username: rover
