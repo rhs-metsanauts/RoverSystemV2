@@ -137,6 +137,7 @@ input {
   grid-template-columns: 1.35fr 1fr;
   grid-template-areas:
     "camera health"
+    "mapping health"
     "code health"
     "output output";
   gap: 16px;
@@ -161,6 +162,42 @@ input {
     rgba(14, 34, 66, 0.72) 15px,
     rgba(14, 34, 66, 0.72) 30px
   );
+  position: relative;
+  overflow: hidden;
+}
+
+.camera-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.mapping-panel {
+  grid-area: mapping;
+  padding: 18px;
+}
+
+.mapping-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.mapping-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mapping-viewport {
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(95, 139, 255, 0.3);
+  background: rgba(4, 10, 24, 0.92);
+  min-height: 280px;
+  overflow: hidden;
 }
 
 .placeholder-title {
@@ -340,6 +377,7 @@ pre {
     grid-template-columns: 1fr;
     grid-template-areas:
       "camera"
+      "mapping"
       "health"
       "code"
       "output";

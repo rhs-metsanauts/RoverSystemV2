@@ -34,13 +34,27 @@
       <section class="grid">
         <article class="panel camera-panel">
           <h2>Camera Feed</h2>
-          <div class="camera-placeholder" id="camera-placeholder">
+            <div class="camera-placeholder" id="camera-placeholder">
+              <img id="camera-feed" class="camera-feed hidden" alt="Active rover camera feed" />
             <div>
-              <p class="placeholder-title">Video Placeholder</p>
+                <p class="placeholder-title">Stereo Stream</p>
               <p id="camera-rover-name">Select a rover to begin.</p>
             </div>
           </div>
         </article>
+
+          <article class="panel mapping-panel">
+            <div class="mapping-header">
+              <h2>Live Mapping</h2>
+              <div class="mapping-controls">
+                <button id="mapping-start-btn" class="btn btn-soft" type="button">Start</button>
+                <button id="mapping-stop-btn" class="btn btn-soft" type="button">Stop</button>
+                <button id="mapping-clear-btn" class="btn btn-outline" type="button">Clear</button>
+              </div>
+            </div>
+            <p id="mapping-status" class="message">Mapping idle.</p>
+            <div id="mapping-viewport" class="mapping-viewport"></div>
+          </article>
 
         <article class="panel health-panel">
           <div class="health-header">
@@ -115,6 +129,8 @@
         activeRover: {{ active_rover | tojson }}
       };
     </script>
+    <script src="{{ url_for('static', filename='js/three.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/mapping.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   </body>
 </html>

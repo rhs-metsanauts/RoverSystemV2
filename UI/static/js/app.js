@@ -16,6 +16,7 @@
   const modalClose = document.getElementById("modal-close");
 
   const cameraRoverName = document.getElementById("camera-rover-name");
+  const cameraFeed = document.getElementById("camera-feed");
   const healthStatus = document.getElementById("health-status");
   const healthTemp = document.getElementById("health-temp");
   const healthCpu = document.getElementById("health-cpu");
@@ -85,10 +86,24 @@
   function setCameraPlaceholder() {
     if (!activeRover) {
       cameraRoverName.textContent = "No rover selected.";
+      if (cameraFeed) {
+        cameraFeed.classList.add("hidden");
+        cameraFeed.removeAttribute("src");
+      }
+      if (window.RoverMapping && typeof window.RoverMapping.setActiveRover === "function") {
+        window.RoverMapping.setActiveRover(null);
+      }
       return;
     }
 
-    cameraRoverName.textContent = `Placeholder bound to ${activeRover.name} (${activeRover.host})`;
+    cameraRoverName.textContent = `Live stream from ${activeRover.name} (${activeRover.host})`;
+    if (cameraFeed) {
+      cameraFeed.src = activeRover.camera_mjpeg_url;
+      cameraFeed.classList.remove("hidden");
+    }
+    if (window.RoverMapping && typeof window.RoverMapping.setActiveRover === "function") {
+      window.RoverMapping.setActiveRover(activeRover);
+    }
   }
 
   function formatCpu(cpu) {
@@ -192,6 +207,7 @@
 
     state.rovers = Array.isArray(payload.rovers) ? payload.rovers : [];
     activeRover = payload.active_rover || activeRover;
+    window.RoverMapping?.setRovers(state.rovers);
   }
 
   async function addRoverByIp(ipAddress) {
@@ -210,6 +226,7 @@
     activeRover = payload.active_rover || activeRover;
     populateRoverOptions();
     setCameraPlaceholder();
+    window.RoverMapping?.setRovers(state.rovers);
 
     if (activeRover) {
       roverSelect.value = activeRover.name;
@@ -395,6 +412,7 @@
 
     populateRoverOptions();
     setCameraPlaceholder();
+    window.RoverMapping?.setRovers(state.rovers);
     wireEvents();
     await refreshHealth();
 

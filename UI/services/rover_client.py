@@ -18,6 +18,7 @@ class RoverTarget:
     host: str
     control_port: int = 8002
     camera_port: int = 8001
+    mapper_ws_port: int = 9001
     ssh_username: str = "rover"
 
     @property
@@ -28,15 +29,21 @@ class RoverTarget:
     def camera_mjpeg_url(self) -> str:
         return f"http://{self.host}:{self.camera_port}/video.mjpg"
 
+    @property
+    def mapper_ws_url(self) -> str:
+        return f"ws://{self.host}:{self.mapper_ws_port}"
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "host": self.host,
             "control_port": self.control_port,
             "camera_port": self.camera_port,
+            "mapper_ws_port": self.mapper_ws_port,
             "ssh_username": self.ssh_username,
             "control_base_url": self.control_base_url,
             "camera_mjpeg_url": self.camera_mjpeg_url,
+            "mapper_ws_url": self.mapper_ws_url,
         }
 
 
@@ -64,6 +71,7 @@ def load_rover_targets(config_path: Path) -> list[RoverTarget]:
                 host=host,
                 control_port=int(rover.get("control_port", 8002)),
                 camera_port=int(rover.get("camera_port", 8001)),
+                mapper_ws_port=int(rover.get("mapper_ws_port", 9001)),
                 ssh_username=str(rover.get("ssh_username", "rover")),
             )
         )
