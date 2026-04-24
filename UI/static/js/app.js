@@ -358,8 +358,6 @@
   }
 
   async function showSshHelp() {
-    setMessage(executeMessage, "Loading SSH instructions…");
-
     try {
       const response = await fetch("/api/ssh-instructions");
 
@@ -383,11 +381,7 @@
           </div>
         `
       );
-
-      setMessage(executeMessage, `SSH steps ready for ${payload.rover?.name || "rover"}.`, "ok");
-    } catch (error) {
-      setMessage(executeMessage, friendlyError(error.message, "SSH help unavailable"), "error");
-    }
+    } catch (error) {}
   }
 
   function populateRoverOptions() {
