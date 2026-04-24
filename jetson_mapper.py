@@ -5,6 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Any
+import socket
 
 import io
 
@@ -42,7 +43,7 @@ class MapperConfig:
     ws_port: int = int(os.getenv("MAPPER_WS_PORT", "9001"))
     mjpeg_host: str = os.getenv("MAPPER_MJPEG_HOST", "0.0.0.0")
     mjpeg_port: int = int(os.getenv("MAPPER_MJPEG_PORT", "8001"))
-    rover_id: str = os.getenv("ROVER_ID", "rover0")
+    rover_id: str = socket.gethostname()
     voxel_size: float = float(os.getenv("MAPPER_VOXEL_SIZE", "0.15"))
     range_m: float = float(os.getenv("MAPPER_RANGE_M", "5.0"))
     fps: int = int(os.getenv("MAPPER_FPS", "15"))
