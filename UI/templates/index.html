@@ -21,12 +21,12 @@
         </div>
 
         <div class="controls">
-          <label for="rover-select">Active Rover</label>
-          <select id="rover-select"></select>
-          <div class="controls-row">
-            <button id="add-ip-btn" class="btn btn-soft">Add Rover IP</button>
+          <div class="controls-buttons-row">
             <button id="rescan-btn" class="btn btn-soft">Rescan Devices</button>
             <button id="ssh-btn" class="btn btn-outline">SSH Help</button>
+          </div>
+          <div class="controls-row">
+            <p id="rescan-message" class="message action-message controls-message-line"></p>
           </div>
         </div>
       </header>
@@ -49,56 +49,9 @@
           </div>
         </article>
 
-        <article class="panel mapping-panel">
-          <div class="mapping-header">
-            <h2>Live Mapping</h2>
-            <div class="mapping-controls">
-              <button id="mapping-start-btn" class="btn btn-soft" type="button">Start</button>
-              <button id="mapping-stop-btn" class="btn btn-soft" type="button">Stop</button>
-              <button id="mapping-clear-btn" class="btn btn-outline" type="button">Clear</button>
-            </div>
-          </div>
-          <p id="mapping-status" class="message">Mapping idle.</p>
-          <div id="mapping-viewport" class="mapping-viewport"></div>
-        </article>
-
-        <article class="panel health-panel">
-          <div class="health-header">
-            <h2>Health Summary</h2>
-            <button id="refresh-health-btn" class="btn btn-soft">Refresh</button>
-          </div>
-
-          <div class="health-grid">
-            <div class="health-card">
-              <h3>Status</h3>
-              <p id="health-status">--</p>
-            </div>
-            <div class="health-card">
-              <h3>Max Temp</h3>
-              <p id="health-temp">--</p>
-            </div>
-            <div class="health-card">
-              <h3>CPU Load</h3>
-              <p id="health-cpu">--</p>
-            </div>
-            <div class="health-card">
-              <h3>Memory</h3>
-              <p id="health-memory">--</p>
-            </div>
-            <div class="health-card">
-              <h3>Disk</h3>
-              <p id="health-disk">--</p>
-            </div>
-          </div>
-
-          <p id="health-message" class="message"></p>
-        </article>
-
         <article class="panel code-panel">
           <h2>Python Command Pad</h2>
-          <p class="subtext">
-            Code runs on the currently selected rover via its `:8002/execute` endpoint.
-          </p>
+          <p class="subtext">Code runs on the currently selected rover.</p>
           <textarea
             id="code-input"
             spellcheck="false"
@@ -112,12 +65,46 @@
           <p id="execute-message" class="message"></p>
         </article>
 
+        <article class="panel mapping-panel">
+          <div class="mapping-header">
+            <h2>Live Mapping</h2>
+            <div class="mapping-controls">
+              <button id="mapping-start-btn" class="btn btn-soft" type="button">Start</button>
+              <button id="mapping-stop-btn" class="btn btn-soft" type="button">Stop</button>
+              <button id="mapping-clear-btn" class="btn btn-outline" type="button">Clear</button>
+            </div>
+          </div>
+          <p id="mapping-status" class="message">Mapping idle.</p>
+          <div id="mapping-viewport" class="mapping-viewport"></div>
+        </article>
+
         <article class="panel output-panel">
           <h2>Execution Result</h2>
           <pre id="execution-output">No execution yet.</pre>
         </article>
+
+        <article class="panel health-panel">
+          <div class="health-header">
+            <div>
+              <h2>Rover Health</h2>
+              <p class="subtext" id="health-rover-name">No rover selected.</p>
+            </div>
+            <button id="refresh-health-btn" class="btn btn-soft">Refresh</button>
+          </div>
+
+          <div id="health-summary" class="health-summary"></div>
+          <p id="health-message" class="message"></p>
+        </article>
       </section>
     </main>
+
+    <aside class="rover-rail" aria-label="Rover selection rail">
+      <div class="rover-rail-header">
+        <h2>Rovers</h2>
+        <p class="subtext">Click IP line to edit alias</p>
+      </div>
+      <div id="rover-tabs" class="rover-tabs" role="tablist" aria-label="Rover tabs"></div>
+    </aside>
 
     <div id="modal-overlay" class="modal-overlay hidden" aria-hidden="true">
       <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">

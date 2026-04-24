@@ -1,10 +1,10 @@
 (function () {
   const initial = window.__INITIAL_STATE__ || { rovers: [], activeRover: null };
 
-  const roverSelect = document.getElementById("rover-select");
+  const roverTabs = document.getElementById("rover-tabs");
   const sshBtn = document.getElementById("ssh-btn");
-  const addIpBtn = document.getElementById("add-ip-btn");
   const rescanBtn = document.getElementById("rescan-btn");
+  const rescanMessage = document.getElementById("rescan-message");
   const refreshHealthBtn = document.getElementById("refresh-health-btn");
   const executeBtn = document.getElementById("execute-btn");
   const codeInput = document.getElementById("code-input");
@@ -18,17 +18,17 @@
   const cameraRoverName = document.getElementById("camera-rover-name");
   const cameraStreamImg = document.getElementById("camera-stream-img");
   const streamButtons = Array.from(document.querySelectorAll(".stream-btn"));
-  const healthStatus = document.getElementById("health-status");
-  const healthTemp = document.getElementById("health-temp");
-  const healthCpu = document.getElementById("health-cpu");
-  const healthMemory = document.getElementById("health-memory");
-  const healthDisk = document.getElementById("health-disk");
+  const healthSummary = document.getElementById("health-summary");
+  const healthRoverName = document.getElementById("health-rover-name");
   const healthMessage = document.getElementById("health-message");
   const executeMessage = document.getElementById("execute-message");
   const executionOutput = document.getElementById("execution-output");
 
   const state = {
     rovers: Array.isArray(initial.rovers) ? [...initial.rovers] : [],
+    healthByRover: {},
+    activeHealth: null,
+    healthRequestInFlight: false,
   };
 
   let activeRover = initial.activeRover;
@@ -46,6 +46,10 @@
     if (kind) {
       element.classList.add(kind);
     }
+  }
+
+  function setRescanMessage(text, kind) {
+    setMessage(rescanMessage, text, kind);
   }
 
   function friendlyError(rawError, contextLabel) {
@@ -95,27 +99,6 @@
     modalOverlay.classList.add("hidden");
     modalOverlay.setAttribute("aria-hidden", "true");
     modalBody.innerHTML = "";
-  }
-
-  function showAddIpModal(contextMessage) {
-    const message = contextMessage
-      ? `<p class="subtext">${escapeHtml(contextMessage)}</p>`
-      : "<p class=\"subtext\">Enter a rover IP to create a direct low-latency control target.</p>";
-
-    showModal(
-      "Add Rover by IP",
-      `
-        ${message}
-        <div class="modal-form-row">
-          <label for="modal-ip-input">Rover IP address</label>
-          <input id="modal-ip-input" type="text" placeholder="e.g. 192.168.1.42" autocomplete="off" />
-        </div>
-        <div class="modal-actions">
-          <button id="modal-add-ip-submit" class="btn" type="button">Add and Switch</button>
-        </div>
-        <p class="subtext">Tip: IP targets usually reduce name-resolution latency compared to hostname aliases.</p>
-      `
-    );
   }
 
   function cameraStreamUrl(rover, streamKey) {
@@ -180,6 +163,16 @@
     return `${used} used / ${total} total (free: ${free})`;
   }
 
+  function formatRamMini(memory) {
+    if (!memory) {
+      return "--";
+    }
+
+    const used = memory.used ?? "--";
+    const total = memory.total ?? "--";
+    return `${used}/${total}`;
+  }
+
   function formatDisk(disk) {
     if (!disk) {
       return "--";
@@ -192,22 +185,244 @@
     return `${mount}: ${used}/${size} (${pct})`;
   }
 
-  function renderHealthSummary(summary) {
-    healthStatus.textContent = (summary.status || "unknown").toString().toUpperCase();
-    healthTemp.textContent =
+  function healthMiniText(record) {
+    if (!record || !record.summary) {
+      return "Temp: --  CPU: --  RAM: --";
+    }
+
+    if (!record.ok) {
+      return "Temp: --  CPU: --  RAM: --";
+    }
+
+    const summary = record.summary || {};
+    const temp =
       summary.max_temp_c !== null && summary.max_temp_c !== undefined
-        ? `${summary.max_temp_c} °C`
+        ? `${summary.max_temp_c}°C`
         : "--";
-    healthCpu.textContent = formatCpu(summary.cpu_load);
-    healthMemory.textContent = formatMemory(summary.memory);
-    healthDisk.textContent = formatDisk(summary.disk);
+    const cpu1 = summary.cpu_load && summary.cpu_load["1min"] !== undefined ? summary.cpu_load["1min"] : "--";
+    const ram = formatRamMini(summary.memory);
+    return `Temp: ${temp}  CPU: ${cpu1}  RAM: ${ram}`;
+  }
+
+  function renderActiveHealth() {
+    const record = state.activeHealth;
+    const rover = record?.rover || activeRover || {};
+
+    if (!record) {
+      const roverAvailable =
+        !!activeRover && Array.isArray(state.rovers) && state.rovers.some((roverItem) => roverItem.name === activeRover.name);
+
+      healthRoverName.textContent = roverAvailable
+        ? `${activeRover.name} (${activeRover.host})`
+        : "No rover connected.";
+      healthSummary.innerHTML = '<p class="subtext">Refresh to load rover health.</p>';
+      return;
+    }
+
+    healthRoverName.textContent = `${rover.name || "Selected rover"} (${rover.host || "--"})`;
+
+    if (!record.ok) {
+      healthSummary.innerHTML = `
+        <div class="health-grid">
+          <section class="health-card">
+            <h3>Status</h3>
+            <p class="health-value error">UNAVAILABLE</p>
+            <p class="health-details">${escapeHtml(record.error || "Health check failed.")}</p>
+          </section>
+        </div>
+      `;
+      return;
+    }
+
+    const summary = record.summary || {};
+    const raw = record.raw || {};
+    const temp = summary.max_temp_c !== null && summary.max_temp_c !== undefined ? `${summary.max_temp_c} °C` : "--";
+    const cpu = formatCpu(summary.cpu_load);
+    const memory = formatMemory(summary.memory);
+    const disk = formatDisk(summary.disk);
+    const status = (summary.status || "unknown").toString().toUpperCase();
+
+    healthSummary.innerHTML = `
+      <div class="health-grid">
+        <section class="health-card">
+          <h3>Status</h3>
+          <p class="health-value">${escapeHtml(status)}</p>
+          <p class="health-details">${escapeHtml(rover.name || "Selected rover")} • ${escapeHtml(rover.host || "--")}</p>
+        </section>
+        <section class="health-card">
+          <h3>Temp</h3>
+          <p class="health-value">${escapeHtml(temp)}</p>
+          <p class="health-details">Max temperature reported by the rover health endpoint.</p>
+        </section>
+        <section class="health-card">
+          <h3>CPU</h3>
+          <p class="health-value">${escapeHtml(cpu)}</p>
+          <p class="health-details">Load averages: 1m / 5m / 15m.</p>
+        </section>
+        <section class="health-card">
+          <h3>RAM</h3>
+          <p class="health-value">${escapeHtml(memory)}</p>
+          <p class="health-details">Memory usage and free/available totals.</p>
+        </section>
+      </div>
+      <section class="health-card">
+        <h3>Disk</h3>
+        <p class="health-value">${escapeHtml(disk)}</p>
+        <p class="health-details">Primary disk usage details.</p>
+      </section>
+      <div class="health-raw">${escapeHtml(JSON.stringify(raw, null, 2))}</div>
+    `;
+  }
+
+  async function beginInlineIpEdit(hostEl, rover) {
+    if (!hostEl || !rover) {
+      return;
+    }
+
+    if (hostEl.classList.contains("editing")) {
+      return;
+    }
+
+    hostEl.classList.add("editing");
+    const currentAlias = rover.ip_override || "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "rover-tab-ip-input";
+    input.placeholder = "No IP address";
+    input.value = currentAlias;
+
+    hostEl.innerHTML = "";
+    hostEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+
+    const commit = async () => {
+      if (committed) {
+        return;
+      }
+      committed = true;
+      const nextValue = (input.value || "").trim();
+
+      try {
+        await setRoverIpAlias(rover.name, nextValue);
+      } catch (error) {
+        setMessage(healthMessage, friendlyError(error.message, "Unable to update rover IP alias"), "error");
+      }
+    };
+
+    input.addEventListener("keydown", async (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        await commit();
+      }
+      if (event.key === "Escape") {
+        committed = true;
+        renderRoverTabs();
+      }
+    });
+
+    input.addEventListener("blur", async () => {
+      await commit();
+    });
+  }
+
+  function renderRoverTabs() {
+    roverTabs.innerHTML = "";
+
+    if (!state.rovers.length) {
+      roverTabs.innerHTML = '<p class="subtext">No rovers available from latest scan.</p>';
+      activeRover = null;
+      return;
+    }
+
+    for (const rover of state.rovers) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `rover-tab ${activeRover && activeRover.name === rover.name ? "active" : ""}`;
+      button.setAttribute("role", "tab");
+      button.dataset.roverName = rover.name;
+
+      const summary = state.healthByRover[rover.name];
+      const aliasText = rover.ip_override ? rover.ip_override : "No IP address";
+      button.innerHTML = `
+        <span class="rover-tab-title">${escapeHtml(rover.name)}</span>
+        <span class="rover-tab-host" data-rover-name="${escapeHtml(rover.name)}">(${escapeHtml(aliasText)})</span>
+        <span class="rover-tab-stats">${escapeHtml(healthMiniText(summary))}</span>
+      `;
+
+      button.addEventListener("click", async () => {
+        await switchRover(rover.name);
+      });
+
+      const hostLine = button.querySelector(".rover-tab-host");
+      if (hostLine instanceof HTMLElement) {
+        hostLine.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          await beginInlineIpEdit(hostLine, rover);
+        });
+      }
+
+      roverTabs.appendChild(button);
+    }
+
   }
 
   function renderExecutionResult(result) {
     executionOutput.textContent = JSON.stringify(result, null, 2);
   }
 
-  async function refreshHealth() {
+  async function refreshRoverHealthCache() {
+    if (state.healthRequestInFlight) {
+      return;
+    }
+
+    state.healthRequestInFlight = true;
+
+    try {
+      const response = await fetch("/api/health-all");
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `Health request failed (${response.status})`);
+      }
+
+      const nextHealth = {};
+      for (const entry of payload.results || []) {
+        if (entry && entry.rover && entry.rover.name) {
+          nextHealth[entry.rover.name] = entry;
+        }
+      }
+
+      state.healthByRover = nextHealth;
+      renderRoverTabs();
+    } catch (error) {
+      setMessage(healthMessage, friendlyError(error.message, "Unable to refresh rover stats"), "error");
+    } finally {
+      state.healthRequestInFlight = false;
+    }
+  }
+
+  async function refreshActiveHealth(options) {
+    const opts = options || {};
+    const showNoRoverError = !!opts.showNoRoverError;
+
+    const canQueryActiveHealth =
+      !!activeRover && Array.isArray(state.rovers) && state.rovers.some((rover) => rover.name === activeRover.name);
+
+    if (!canQueryActiveHealth) {
+      state.activeHealth = null;
+      renderActiveHealth();
+      if (showNoRoverError) {
+        setMessage(healthMessage, "No rover connected. Rescan devices and select a rover.", "error");
+      } else {
+        setMessage(healthMessage, "", "");
+      }
+      return;
+    }
+
     setMessage(healthMessage, "Fetching rover health…");
 
     try {
@@ -218,9 +433,14 @@
         throw new Error(payload.error || `Health request failed (${response.status})`);
       }
 
-      renderHealthSummary(payload.summary);
+      state.activeHealth = payload;
+      activeRover = payload.rover || activeRover;
+      renderActiveHealth();
+      renderRoverTabs();
       setMessage(healthMessage, `Health updated for ${payload.rover.name}.`, "ok");
     } catch (error) {
+      state.activeHealth = null;
+      renderActiveHealth();
       setMessage(healthMessage, friendlyError(error.message, "Health unavailable"), "error");
     }
   }
@@ -241,9 +461,10 @@
       }
 
       activeRover = payload.active_rover;
+      renderRoverTabs();
       setCameraPlaceholder();
       setMessage(healthMessage, `Active rover: ${activeRover.name}`, "ok");
-      await refreshHealth();
+      await refreshActiveHealth();
     } catch (error) {
       setMessage(healthMessage, friendlyError(error.message, "Unable to switch rover"), "error");
     }
@@ -260,13 +481,14 @@
     state.rovers = Array.isArray(payload.rovers) ? payload.rovers : [];
     activeRover = payload.active_rover || activeRover;
     window.RoverMapping?.setRovers(state.rovers);
+    renderRoverTabs();
   }
 
-  async function addRoverByIp(ipAddress) {
+  async function setRoverIpAlias(roverName, ipAddress) {
     const response = await fetch("/api/add-rover-ip", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ip_address: ipAddress }),
+      body: JSON.stringify({ rover_name: roverName, ip_address: ipAddress }),
     });
 
     const payload = await response.json();
@@ -276,16 +498,13 @@
 
     state.rovers = Array.isArray(payload.rovers) ? payload.rovers : state.rovers;
     activeRover = payload.active_rover || activeRover;
-    populateRoverOptions();
+    renderRoverTabs();
     setCameraPlaceholder();
     window.RoverMapping?.setRovers(state.rovers);
 
-    if (activeRover) {
-      roverSelect.value = activeRover.name;
-    }
-
-    setMessage(healthMessage, payload.message || "Rover IP added.", "ok");
-    await refreshHealth();
+    setMessage(healthMessage, payload.message || "Rover IP alias updated.", "ok");
+    await refreshRoverHealthCache();
+    await refreshActiveHealth();
   }
 
   async function scanRovers(triggeredByRescan) {
@@ -296,30 +515,29 @@
       throw new Error(payload.error || `Scan failed (${response.status})`);
     }
 
+    state.rovers = Array.isArray(payload.rovers) ? payload.rovers : state.rovers;
+    activeRover = payload.active_rover || activeRover;
+    if (!state.rovers.length) {
+      activeRover = null;
+      state.activeHealth = null;
+    }
+    window.RoverMapping?.setRovers(state.rovers);
+    renderRoverTabs();
+    setCameraPlaceholder();
+
     const discovered = payload.discovered || [];
-    const newlyDiscovered = payload.newly_discovered || [];
-
-    if (!triggeredByRescan && payload.show_ip_input) {
-      showAddIpModal(
-        `Detected online devices: ${discovered.join(", ")}. Enter a direct IP now for faster and lower-latency control.`
-      );
-      return;
-    }
-
-    if (triggeredByRescan && newlyDiscovered.length > 0) {
-      showAddIpModal(
-        `New device(s) found: ${newlyDiscovered.join(", ")}. Add an IP target to switch quickly.`
-      );
-      return;
-    }
-
     if (triggeredByRescan) {
       const label = discovered.length ? discovered.join(", ") : "none";
-      setMessage(healthMessage, `Rescan complete. Online: ${label}.`, "ok");
+      setRescanMessage(`Rescan complete. Visible rovers: ${label}.`, "ok");
     }
   }
 
   async function executeCode() {
+    if (!activeRover) {
+      setMessage(executeMessage, "No visible rover selected. Rescan and choose a rover first.", "error");
+      return;
+    }
+
     const code = codeInput.value || "";
     const timeoutSeconds = Number(timeoutInput.value || 60);
 
@@ -358,6 +576,11 @@
   }
 
   async function showSshHelp() {
+    if (!state.rovers.length) {
+      setRescanMessage("No rover connected. Rescan devices and select a rover.", "error");
+      return;
+    }
+
     try {
       const response = await fetch("/api/ssh-instructions");
 
@@ -381,37 +604,26 @@
           </div>
         `
       );
-    } catch (error) {}
-  }
-
-  function populateRoverOptions() {
-    roverSelect.innerHTML = "";
-
-    for (const rover of state.rovers || []) {
-      const option = document.createElement("option");
-      option.value = rover.name;
-      option.textContent = `${rover.name} (${rover.host})`;
-      if (activeRover && rover.name === activeRover.name) {
-        option.selected = true;
-      }
-      roverSelect.appendChild(option);
+    } catch (error) {
+      setMessage(healthMessage, friendlyError(error.message, "Unable to load SSH help"), "error");
     }
   }
 
   function wireEvents() {
-    roverSelect.addEventListener("change", async (event) => {
-      await switchRover(event.target.value);
-    });
-
-    addIpBtn.addEventListener("click", () => showAddIpModal());
     rescanBtn.addEventListener("click", async () => {
+      setRescanMessage("Rescanning devices…");
       try {
         await scanRovers(true);
+        await refreshRoverHealthCache();
+        await refreshActiveHealth();
       } catch (error) {
-        setMessage(healthMessage, friendlyError(error.message, "Rescan failed"), "error");
+        setRescanMessage(friendlyError(error.message, "Rescan failed"), "error");
       }
     });
-    refreshHealthBtn.addEventListener("click", refreshHealth);
+    refreshHealthBtn.addEventListener("click", async () => {
+      await refreshRoverHealthCache();
+      await refreshActiveHealth({ showNoRoverError: true });
+    });
     executeBtn.addEventListener("click", executeCode);
     sshBtn.addEventListener("click", showSshHelp);
 
@@ -434,32 +646,6 @@
         closeModal();
       }
     });
-
-    modalBody.addEventListener("click", async (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-
-      if (target.id !== "modal-add-ip-submit") {
-        return;
-      }
-
-      const ipInput = document.getElementById("modal-ip-input");
-      const ipValue = ipInput instanceof HTMLInputElement ? ipInput.value.trim() : "";
-
-      if (!ipValue) {
-        setMessage(healthMessage, "Enter an IP address before adding.", "error");
-        return;
-      }
-
-      try {
-        await addRoverByIp(ipValue);
-        closeModal();
-      } catch (error) {
-        setMessage(healthMessage, `Unable to add IP: ${error.message}`, "error");
-      }
-    });
   }
 
   async function start() {
@@ -469,12 +655,11 @@
       setMessage(healthMessage, friendlyError(error.message, "Could not refresh rover list"), "error");
     }
 
-    populateRoverOptions();
+    renderRoverTabs();
     setActiveStreamButton();
     setCameraPlaceholder();
     window.RoverMapping?.setRovers(state.rovers);
     wireEvents();
-    await refreshHealth();
 
     try {
       await scanRovers(false);
@@ -482,7 +667,12 @@
       setMessage(healthMessage, friendlyError(error.message, "Initial rover scan failed"), "error");
     }
 
-    setInterval(refreshHealth, 10000);
+    await refreshRoverHealthCache();
+    await refreshActiveHealth();
+    setInterval(async () => {
+      await refreshRoverHealthCache();
+      await refreshActiveHealth();
+    }, 10000);
   }
 
   start();

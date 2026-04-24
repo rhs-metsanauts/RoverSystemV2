@@ -28,7 +28,7 @@ body {
 .layout {
   max-width: 1250px;
   margin: 0 auto;
-  padding: 28px;
+  padding: 28px 332px 28px 28px;
 }
 
 .panel {
@@ -74,12 +74,50 @@ h1 {
   gap: 8px;
 }
 
+.controls-buttons-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .controls-row {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  width: 100%;
+}
+
+.rescan-stack {
+  width: 270px;
+}
+
+.action-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.action-stack-right {
+  align-items: flex-end;
+}
+
+.action-message {
+  margin: 0;
+  min-height: 1.1em;
+  max-width: 100%;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.controls-message-line {
+  width: 100%;
+  text-align: right;
+  white-space: nowrap;
 }
 
 label {
@@ -136,10 +174,9 @@ input {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
   grid-template-areas:
-    "camera health"
-    "mapping health"
-    "code health"
-    "output output";
+    "camera code"
+    "mapping output"
+    "health health";
   gap: 16px;
 }
 
@@ -207,6 +244,94 @@ input {
   padding: 18px;
 }
 
+.code-panel {
+  grid-area: code;
+  padding: 18px;
+}
+
+.rover-rail {
+  position: fixed;
+  top: 84px;
+  right: 0;
+  width: 320px;
+  max-height: calc(100vh - 100px);
+  background: rgba(8, 18, 40, 0.92);
+  border: 1px solid rgba(97, 138, 254, 0.3);
+  border-right: none;
+  border-radius: 16px 0 0 16px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  padding: 14px 14px 12px;
+  z-index: 15;
+}
+
+.rover-rail-header {
+  margin-bottom: 10px;
+}
+
+.rover-rail-header .subtext {
+  margin-bottom: 0;
+  font-size: 0.8rem;
+}
+
+.rover-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.rover-tab {
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(135, 155, 228, 0.38);
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: rgba(8, 18, 40, 0.8);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rover-tab.active {
+  border-color: rgba(96, 213, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(96, 213, 255, 0.3) inset;
+}
+
+.rover-tab-title {
+  display: block;
+  font-family: "Orbitron", "Segoe UI", sans-serif;
+  font-size: 0.84rem;
+}
+
+.rover-tab-host {
+  display: block;
+  margin-top: 2px;
+  color: #d1ddff;
+  font-size: 0.79rem;
+  min-height: 1.3em;
+}
+
+.rover-tab-host.editing {
+  padding: 0;
+}
+
+.rover-tab-ip-input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.rover-tab-stats {
+  margin-top: 5px;
+  color: #bed6ff;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
 .mapping-header {
   display: flex;
   justify-content: space-between;
@@ -214,10 +339,36 @@ input {
   gap: 10px;
 }
 
+.mapping-header h2 {
+  white-space: nowrap;
+}
+
 .mapping-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  grid-template-rows: auto auto;
   gap: 8px;
-  flex-wrap: wrap;
+  align-items: start;
+}
+
+#mapping-start-btn {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#mapping-stop-btn {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+#mapping-clear-btn {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+#mapping-merge-btn {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .mapping-viewport {
@@ -256,36 +407,68 @@ input {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+}
+
+.health-header .subtext {
+  margin-bottom: 0;
+  margin-top: 4px;
+}
+
+.health-summary {
+  margin-top: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(135, 155, 228, 0.28);
+  background: rgba(8, 18, 40, 0.82);
+  padding: 14px;
 }
 
 .health-grid {
-  margin-top: 12px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .health-card {
-  background: rgba(8, 18, 40, 0.82);
-  border: 1px solid rgba(135, 155, 228, 0.3);
+  background: rgba(6, 14, 30, 0.84);
+  border: 1px solid rgba(135, 155, 228, 0.28);
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px;
 }
 
 .health-card h3 {
-  font-size: 0.82rem;
-  color: var(--muted);
+  font-size: 0.9rem;
+  color: var(--text);
   margin-bottom: 6px;
 }
 
 .health-card p {
   margin: 0;
-  font-size: 1rem;
 }
 
-.code-panel {
-  grid-area: code;
-  padding: 18px;
+.health-card .health-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.health-card .health-details {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.health-raw {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(4, 10, 24, 0.92);
+  border: 1px solid rgba(95, 139, 255, 0.27);
+  color: #d5e7ff;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 280px;
+  font-size: 0.78rem;
 }
 
 .subtext {
@@ -402,6 +585,10 @@ pre {
 }
 
 @media (max-width: 1024px) {
+  .layout {
+    padding: 22px;
+  }
+
   .topbar {
     flex-direction: column;
     align-items: stretch;
@@ -415,13 +602,26 @@ pre {
     justify-content: flex-start;
   }
 
+  .rover-rail {
+    position: static;
+    width: 100%;
+    max-height: none;
+    border-radius: 16px;
+    border-right: 1px solid rgba(97, 138, 254, 0.3);
+    margin: 0 22px 12px;
+  }
+
+  .rover-tabs {
+    max-height: 300px;
+  }
+
   .grid {
     grid-template-columns: 1fr;
     grid-template-areas:
       "camera"
+      "code"
       "mapping"
       "health"
-      "code"
       "output";
   }
 }
