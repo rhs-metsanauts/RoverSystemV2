@@ -31,6 +31,7 @@
     SPORT:           0x69f0ae,
   };
   const DEFAULT_OBJ_COLOR = 0xffffff;
+  const TRACKING_STALE_MS = 3500;
 
   function makeObjectLabel(text, color) {
     const canvas = document.createElement("canvas");
@@ -53,6 +54,30 @@
     const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d));
     const mat = new THREE.LineBasicMaterial({ color, linewidth: 1 });
     return new THREE.LineSegments(edges, mat);
+  }
+
+  function makeRoverMarker(roverIdx) {
+    const markerColors = [0xffb84d, 0x4dffd2, 0xff4d4d, 0xd24dff];
+    const color = markerColors[roverIdx % markerColors.length];
+
+    const group = new THREE.Group();
+
+    const body = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 16, 16),
+      new THREE.MeshStandardMaterial({ color })
+    );
+
+    // Cone points along +Y by default; rotate so forward points +Z.
+    const heading = new THREE.Mesh(
+      new THREE.ConeGeometry(0.04, 0.14, 12),
+      new THREE.MeshStandardMaterial({ color, emissive: 0x101010 })
+    );
+    heading.rotation.x = Math.PI / 2;
+    heading.position.set(0, 0, 0.12);
+
+    group.add(body);
+    group.add(heading);
+    return group;
   }
 
   // ---------------------------------------------------------- scene globals
@@ -92,6 +117,19 @@
     }
     const names = connected.map((s) => s.rover.name).join(", ");
     setStatus(`Connected: ${names}`, "ok");
+  }
+
+  function checkTrackingFreshness() {
+    const now = Date.now();
+    const stale = [...sessions.values()]
+      .filter((s) => s.connected && s.mappingState === "mapping")
+      .filter((s) => now - s.lastPoseAt > TRACKING_STALE_MS)
+      .map((s) => s.rover.name);
+
+    if (stale.length > 0) {
+      setStatus(`Tracking lost/stale pose: ${stale.join(", ")}`, "error");
+      return;
+    }
   }
 
   // ---------------------------------------------------------- mesh
@@ -279,17 +317,41 @@
     if (!msg || typeof msg !== "object") return;
 
     if (msg.type === "mapping_status") {
+      if (typeof msg.state === "string") {
+        session.mappingState = msg.state;
+        if (msg.state === "mapping" && !session.lastPoseAt) {
+          session.lastPoseAt = Date.now();
+        }
+      }
       updateStatusFromSessions();
       return;
     }
 
     if (msg.type === "pose_update") {
+      session.lastPoseAt = Date.now();
       const pos = Array.isArray(msg.position) ? msg.position : [0, 0, 0];
       session.marker.position.set(
         Number(pos[0] || 0),
         Number(pos[1] || 0),
         Number(pos[2] || 0)
       );
+
+      const orientation = Array.isArray(msg.orientation) ? msg.orientation : null;
+      if (orientation && orientation.length === 4) {
+        const qx = Number(orientation[0]);
+        const qy = Number(orientation[1]);
+        const qz = Number(orientation[2]);
+        const qw = Number(orientation[3]);
+
+        if (
+          Number.isFinite(qx) &&
+          Number.isFinite(qy) &&
+          Number.isFinite(qz) &&
+          Number.isFinite(qw)
+        ) {
+          session.marker.quaternion.set(qx, qy, qz, qw);
+        }
+      }
       return;
     }
 
@@ -329,12 +391,7 @@
       if (existing.ws && existing.ws.readyState < WebSocket.CLOSING) return;
     }
 
-    const markerColors = [0xffb84d, 0x4dffd2, 0xff4d4d, 0xd24dff];
-    const markerGeo = new THREE.SphereGeometry(0.07, 16, 16);
-    const markerMat = new THREE.MeshStandardMaterial({
-      color: markerColors[roverIdx % markerColors.length],
-    });
-    const marker = new THREE.Mesh(markerGeo, markerMat);
+    const marker = makeRoverMarker(roverIdx);
     scene.three.add(marker);
 
     const session = {
@@ -344,6 +401,8 @@
       marker,
       roverIdx,
       connected: false,
+      mappingState: "idle",
+      lastPoseAt: Date.now(),
       lastVertices: null,
       lastFaces: null,
       objectMeshes: new Map(),
@@ -362,6 +421,7 @@
 
     ws.addEventListener("close", () => {
       session.connected = false;
+      session.mappingState = "disconnected";
       updateStatusFromSessions();
       // Auto-reconnect after 3 s
       setTimeout(() => {
@@ -374,6 +434,7 @@
 
     ws.addEventListener("error", () => {
       session.connected = false;
+      session.mappingState = "error";
       updateStatusFromSessions();
     });
   }
@@ -385,8 +446,18 @@
     clearRoverMesh(session);
     if (session.marker) {
       scene.three.remove(session.marker);
-      session.marker.geometry.dispose();
-      session.marker.material.dispose();
+      session.marker.traverse((node) => {
+        if (node.geometry && typeof node.geometry.dispose === "function") {
+          node.geometry.dispose();
+        }
+        if (node.material) {
+          if (Array.isArray(node.material)) {
+            node.material.forEach((material) => material.dispose && material.dispose());
+          } else if (typeof node.material.dispose === "function") {
+            node.material.dispose();
+          }
+        }
+      });
     }
     sessions.delete(roverName);
   }
@@ -539,6 +610,8 @@
     clearActiveMap();
     setStatus("Map cleared.", "ok");
   });
+
+  setInterval(checkTrackingFreshness, 1200);
 
   initScene();
 

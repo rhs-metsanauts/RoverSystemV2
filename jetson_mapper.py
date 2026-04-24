@@ -61,6 +61,7 @@ class JetsonMapper:
         self._grab_count = 0
         self.session_id = f"session-{int(asyncio.get_event_loop().time() * 1000)}"
         self._mjpeg_queues: dict[int, asyncio.Queue[bytes]] = {}
+        self._mjpeg_paths: dict[int, str] = {}
         self._mat = sl.Mat()
 
         self._init_camera()
@@ -77,24 +78,21 @@ class JetsonMapper:
         if status != sl.ERROR_CODE.SUCCESS:
             raise RuntimeError(f"failed to open ZED camera: {status}")
 
+        # FIX: configure RuntimeParameters with depth confidence thresholds
+        # rather than relying on bare defaults, as recommended by SDK guidance.
+        self.runtime = sl.RuntimeParameters()
+        self.runtime.confidence_threshold = 50
+        self.runtime.texture_confidence_threshold = 100
+
+        self.pose = sl.Pose()
+
         tracking_params = sl.PositionalTrackingParameters()
         tracking_params.enable_area_memory = True
         tracking = self.zed.enable_positional_tracking(tracking_params)
         if tracking != sl.ERROR_CODE.SUCCESS:
             raise RuntimeError(f"failed to enable positional tracking: {tracking}")
 
-        mapping = sl.SpatialMappingParameters()
-        mapping.map_type = sl.SPATIAL_MAP_TYPE.MESH
-        mapping.resolution_meter = self.config.voxel_size
-        mapping.range_meter = self.config.range_m
-        mapping.max_memory_usage = 512  # MB — keeps mapping within Jetson's budget
-
-        map_status = self.zed.enable_spatial_mapping(mapping)
-        if map_status != sl.ERROR_CODE.SUCCESS:
-            raise RuntimeError(f"failed to enable spatial mapping: {map_status}")
-
-        self.runtime = sl.RuntimeParameters()
-        self.pose = sl.Pose()
+        self._enable_spatial_mapping()
 
         self._od_enabled = False
         try:
@@ -114,22 +112,48 @@ class JetsonMapper:
         except Exception as e:
             print(f"[warn] object detection init failed: {e}")
 
+    def _enable_spatial_mapping(self) -> None:
+        """Encapsulated so it can be called both on init and after clear_mapping."""
+        mapping = sl.SpatialMappingParameters()
+        mapping.map_type = sl.SPATIAL_MAP_TYPE.MESH
+        mapping.resolution_meter = self.config.voxel_size
+        mapping.range_meter = self.config.range_m
+        mapping.max_memory_usage = 2048  # MB — keeps mapping within Jetson's budget
+        mapping.save_texture = True
+
+        map_status = self.zed.enable_spatial_mapping(mapping)
+        if map_status != sl.ERROR_CODE.SUCCESS:
+            raise RuntimeError(f"failed to enable spatial mapping: {map_status}")
+
     # ------------------------------------------------------------------ MJPEG
 
-    def _grab_frame(self, capture: bool, get_pose: bool) -> tuple[bool, bytes | None, list[float] | None, list[dict]]:
-        """All ZED calls in one thread: grab + optional image + pose + objects."""
+    def _grab_frame(
+        self, capture: bool, get_pose: bool, view: sl.VIEW | None = None
+    ) -> tuple[bool, bytes | None, dict | None, list[dict]]:
+        """All ZED calls in one thread: grab + optional image + pose + objects.
+
+        Returns pose as a dict containing both position and orientation so that
+        the caller can broadcast full 6-DOF state, matching the SDK docs.
+        """
         if self.zed.grab(self.runtime) != sl.ERROR_CODE.SUCCESS:
             return False, None, None, []
 
-        # --- pose ---
-        pose: list[float] | None = None
+        # --- pose (position + orientation) ---
+        # FIX: capture orientation quaternion in addition to translation,
+        # and only return pose data when tracking state is confirmed OK.
+        # Broadcasting [0,0,0] on tracking loss would flood clients with
+        # bogus origin readings.
+        pose_data: dict | None = None
         if get_pose:
             state = self.zed.get_position(self.pose, sl.REFERENCE_FRAME.WORLD)
             if state == sl.POSITIONAL_TRACKING_STATE.OK:
                 t = self.pose.get_translation(sl.Translation()).get()
-                pose = [round(float(t[0]), 4), round(float(t[1]), 4), round(float(t[2]), 4)]
-            else:
-                pose = [0.0, 0.0, 0.0]
+                o = self.pose.get_orientation(sl.Orientation()).get()
+                pose_data = {
+                    "position":    [round(float(t[0]), 4), round(float(t[1]), 4), round(float(t[2]), 4)],
+                    "orientation": [round(float(o[0]), 4), round(float(o[1]), 4), round(float(o[2]), 4), round(float(o[3]), 4)],
+                }
+            # If state != OK we leave pose_data as None; the caller skips the broadcast.
 
         # --- object detection (before image encode so we can draw boxes) ---
         objects: list[dict] = []
@@ -157,7 +181,8 @@ class JetsonMapper:
         # --- image + overlay encode ---
         frame: bytes | None = None
         if capture and self._mjpeg_queues:
-            if self.zed.retrieve_image(self._mat, sl.VIEW.LEFT) == sl.ERROR_CODE.SUCCESS:
+            image_view = view or sl.VIEW.LEFT
+            if self.zed.retrieve_image(self._mat, image_view) == sl.ERROR_CODE.SUCCESS:
                 raw = self._mat.get_data()
                 if raw is not None:
                     arr = np.asarray(raw)
@@ -175,16 +200,18 @@ class JetsonMapper:
                         img.save(buf, format="JPEG", quality=55)
                         frame = buf.getvalue()
 
-        return True, frame, pose, objects
+        return True, frame, pose_data, objects
 
-    async def _push_mjpeg_frame(self, frame: bytes) -> None:
+    async def _push_mjpeg_frame(self, frame: bytes, path_suffix: str | None = None) -> None:
         chunk = (
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n"
             b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n"
             + frame + b"\r\n"
         )
-        for q in list(self._mjpeg_queues.values()):
+        for qid, q in list(self._mjpeg_queues.items()):
+            if path_suffix and self._mjpeg_paths.get(qid) != path_suffix:
+                continue
             if q.full():
                 try:
                     q.get_nowait()
@@ -194,6 +221,25 @@ class JetsonMapper:
                 q.put_nowait(chunk)
             except asyncio.QueueFull:
                 pass
+
+    def _view_for_path(self, path: str) -> sl.VIEW:
+        if path.endswith("/right.mjpg"):
+            return sl.VIEW.RIGHT
+        return sl.VIEW.LEFT
+
+    def _stream_key_for_path(self, path: str) -> str:
+        if path.endswith("/right.mjpg"):
+            return "/right.mjpg"
+        return "/left.mjpg"
+
+    def _active_mjpeg_views(self) -> list[tuple[str, sl.VIEW]]:
+        paths = {path for path in self._mjpeg_paths.values()}
+        views: list[tuple[str, sl.VIEW]] = []
+        if "/video.mjpg" in paths or "/left.mjpg" in paths:
+            views.append(("/left.mjpg", sl.VIEW.LEFT))
+        if "/right.mjpg" in paths:
+            views.append(("/right.mjpg", sl.VIEW.RIGHT))
+        return views
 
     async def _mjpeg_handler(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -223,6 +269,9 @@ class JetsonMapper:
             q: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
             qid = id(writer)
             self._mjpeg_queues[qid] = q
+            self._mjpeg_paths[qid] = self._stream_key_for_path(path)
+
+            view = self._view_for_path(path)
 
             while not writer.is_closing():
                 try:
@@ -243,6 +292,7 @@ class JetsonMapper:
             pass
         finally:
             self._mjpeg_queues.pop(id(writer), None)
+            self._mjpeg_paths.pop(id(writer), None)
             try:
                 writer.close()
                 await writer.wait_closed()
@@ -269,9 +319,13 @@ class JetsonMapper:
         if mesh.get_number_of_triangles() == 0:
             return {}
 
+        # FIX: use MESH_FILTER.LOW rather than HIGH.
+        # HIGH is more aggressive/slower and can cause frame hitches on Jetson
+        # during the executor call. LOW matches the SDK tutorial recommendation
+        # and is sufficient for removing duplicate vertices and degenerate faces.
         try:
             fparams = sl.MeshFilterParameters()
-            fparams.set(sl.MESH_FILTER.HIGH)
+            fparams.set(sl.MESH_FILTER.LOW)
             mesh.filter(fparams, update_mesh=True)
         except Exception:
             pass
@@ -348,13 +402,22 @@ class JetsonMapper:
                     self.seq = 0
                     self._grab_count = 0
                     self.mapping_active = False
-                    self.zed.disable_spatial_mapping()
 
-                    mp = sl.SpatialMappingParameters()
-                    mp.map_type = sl.SPATIAL_MAP_TYPE.MESH
-                    mp.resolution_meter = self.config.voxel_size
-                    mp.range_meter = self.config.range_m
-                    self.zed.enable_spatial_mapping(mp)
+                    # FIX: disable and re-enable in the correct order per the docs:
+                    # spatial_mapping first, then positional_tracking, then
+                    # re-enable tracking before re-enabling spatial mapping.
+                    # Previously only spatial mapping was cycled, which would leave
+                    # the system in a broken state if tracking had been disrupted.
+                    self.zed.disable_spatial_mapping()
+                    self.zed.disable_positional_tracking()
+
+                    tracking_params = sl.PositionalTrackingParameters()
+                    tracking_params.enable_area_memory = True
+                    tracking = self.zed.enable_positional_tracking(tracking_params)
+                    if tracking != sl.ERROR_CODE.SUCCESS:
+                        print(f"[warn] failed to re-enable positional tracking after clear: {tracking}")
+
+                    self._enable_spatial_mapping()
 
                     await self._broadcast(
                         {
@@ -376,17 +439,30 @@ class JetsonMapper:
         while True:
             try:
                 do_capture = (_grab_total % mjpeg_every == 0)
-                grabbed, frame, pose, objects = await loop.run_in_executor(
-                    None, self._grab_frame, do_capture, self.mapping_active
-                )
-                if not grabbed:
+                active_views = self._active_mjpeg_views()
+
+                pose_data: dict | None = None
+                objects: list[dict] = []
+                grabbed_any = False
+
+                for idx, (path_suffix, view) in enumerate(active_views):
+                    grabbed, frame, pose, found_objects = await loop.run_in_executor(
+                        None, self._grab_frame, do_capture, self.mapping_active, view
+                    )
+                    if not grabbed:
+                        continue
+                    grabbed_any = True
+                    if idx == 0:
+                        pose_data = pose
+                        objects = found_objects
+                    if frame is not None:
+                        await self._push_mjpeg_frame(frame, path_suffix)
+
+                if not grabbed_any:
                     await asyncio.sleep(0.01)
                     continue
 
                 _grab_total += 1
-
-                if frame is not None:
-                    await self._push_mjpeg_frame(frame)
 
                 if objects and self.clients and _grab_total % 5 == 0:
                     await self._broadcast({
@@ -399,13 +475,17 @@ class JetsonMapper:
                 if self.mapping_active:
                     self._grab_count += 1
 
-                    if pose is not None:
+                    # FIX: only broadcast pose when tracking state was OK (pose_data
+                    # is None when tracking was lost), and include full 6-DOF orientation
+                    # quaternion alongside position so clients can render rover heading.
+                    if pose_data is not None:
                         await self._broadcast({
                             "type": "pose_update",
                             "rover_id": self.config.rover_id,
                             "session_id": self.session_id,
-                            "frame": "local",
-                            "position": pose,
+                            "frame": "world",
+                            "position":    pose_data["position"],
+                            "orientation": pose_data["orientation"],
                             "timestamp": loop.time(),
                         })
 
@@ -417,7 +497,7 @@ class JetsonMapper:
                                 "rover_id": self.config.rover_id,
                                 "session_id": self.session_id,
                                 "chunk_seq": self.seq,
-                                "frame": "local",
+                                "frame": "world",
                                 **mesh_data,
                                 "timestamp": loop.time(),
                             })
@@ -444,6 +524,8 @@ class JetsonMapper:
                 await self._stream_loop()
 
     def close(self) -> None:
+        # FIX: disable in the correct order per the docs:
+        # spatial mapping first, then positional tracking, then close.
         self.zed.disable_spatial_mapping()
         self.zed.disable_positional_tracking()
         self.zed.close()
