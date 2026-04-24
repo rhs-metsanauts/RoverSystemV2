@@ -16,7 +16,8 @@
   const modalClose = document.getElementById("modal-close");
 
   const cameraRoverName = document.getElementById("camera-rover-name");
-  const cameraFeed = document.getElementById("camera-feed");
+  const cameraStreamImg = document.getElementById("camera-stream-img");
+  const streamButtons = Array.from(document.querySelectorAll(".stream-btn"));
   const healthStatus = document.getElementById("health-status");
   const healthTemp = document.getElementById("health-temp");
   const healthCpu = document.getElementById("health-cpu");
@@ -31,6 +32,13 @@
   };
 
   let activeRover = initial.activeRover;
+  let selectedStream = "video";
+
+  const STREAM_PATHS = {
+    video: "video.mjpg",
+    left: "left.mjpg",
+    right: "right.mjpg",
+  };
 
   function setMessage(element, text, kind) {
     element.textContent = text || "";
@@ -38,6 +46,33 @@
     if (kind) {
       element.classList.add(kind);
     }
+  }
+
+  function friendlyError(rawError, contextLabel) {
+    const source = String(rawError || "").toLowerCase();
+
+    if (
+      source.includes("failed to resolve") ||
+      source.includes("nameresolutionerror") ||
+      source.includes("getaddrinfo failed")
+    ) {
+      return `${contextLabel}: Rover hostname/IP cannot be resolved. You are likely not connected to the rover network. Connect to the rover network or add/select a direct rover IP.`;
+    }
+
+    if (
+      source.includes("max retries exceeded") ||
+      source.includes("connection refused") ||
+      source.includes("failed to establish a new connection") ||
+      source.includes("connection aborted")
+    ) {
+      return `${contextLabel}: Rover is unreachable right now. Check Wi-Fi/network connection, rover power, and that rover services are running.`;
+    }
+
+    if (source.includes("timed out") || source.includes("read timed out")) {
+      return `${contextLabel}: Rover did not respond in time. If you're not connected to rover network, connect first and try again.`;
+    }
+
+    return `${contextLabel}: ${rawError || "Unknown error."}`;
   }
 
   function escapeHtml(text) {
@@ -83,12 +118,21 @@
     );
   }
 
+  function cameraStreamUrl(rover, streamKey) {
+    if (!rover || !rover.host) {
+      return "";
+    }
+
+    const cameraPort = rover.camera_port || 8001;
+    const streamPath = STREAM_PATHS[streamKey] || STREAM_PATHS.video;
+    return `http://${rover.host}:${cameraPort}/${streamPath}`;
+  }
+
   function setCameraPlaceholder() {
     if (!activeRover) {
       cameraRoverName.textContent = "No rover selected.";
-      if (cameraFeed) {
-        cameraFeed.classList.add("hidden");
-        cameraFeed.removeAttribute("src");
+      if (cameraStreamImg) {
+        cameraStreamImg.removeAttribute("src");
       }
       if (window.RoverMapping && typeof window.RoverMapping.setActiveRover === "function") {
         window.RoverMapping.setActiveRover(null);
@@ -96,13 +140,21 @@
       return;
     }
 
-    cameraRoverName.textContent = `Live stream from ${activeRover.name} (${activeRover.host})`;
-    if (cameraFeed) {
-      cameraFeed.src = activeRover.camera_mjpeg_url;
-      cameraFeed.classList.remove("hidden");
+    const streamPath = STREAM_PATHS[selectedStream] || STREAM_PATHS.video;
+    const streamUrl = cameraStreamUrl(activeRover, selectedStream);
+    if (cameraStreamImg) {
+      cameraStreamImg.src = streamUrl;
     }
+    cameraRoverName.textContent = `Streaming ${streamPath} from ${activeRover.name} (${activeRover.host})`;
     if (window.RoverMapping && typeof window.RoverMapping.setActiveRover === "function") {
       window.RoverMapping.setActiveRover(activeRover);
+    }
+  }
+
+  function setActiveStreamButton() {
+    for (const button of streamButtons) {
+      const isActive = button.dataset.stream === selectedStream;
+      button.classList.toggle("active", isActive);
     }
   }
 
@@ -169,7 +221,7 @@
       renderHealthSummary(payload.summary);
       setMessage(healthMessage, `Health updated for ${payload.rover.name}.`, "ok");
     } catch (error) {
-      setMessage(healthMessage, `Health unavailable: ${error.message}`, "error");
+      setMessage(healthMessage, friendlyError(error.message, "Health unavailable"), "error");
     }
   }
 
@@ -193,7 +245,7 @@
       setMessage(healthMessage, `Active rover: ${activeRover.name}`, "ok");
       await refreshHealth();
     } catch (error) {
-      setMessage(healthMessage, `Unable to switch rover: ${error.message}`, "error");
+      setMessage(healthMessage, friendlyError(error.message, "Unable to switch rover"), "error");
     }
   }
 
@@ -298,7 +350,7 @@
       const statusKind = payload.result.ok ? "ok" : "error";
       setMessage(executeMessage, `Execution complete on ${payload.rover.name}.`, statusKind);
     } catch (error) {
-      setMessage(executeMessage, `Execution error: ${error.message}`, "error");
+      setMessage(executeMessage, friendlyError(error.message, "Execution failed"), "error");
       executionOutput.textContent = "No execution result received due to request error.";
     } finally {
       executeBtn.disabled = false;
@@ -334,7 +386,7 @@
 
       setMessage(executeMessage, `SSH steps ready for ${payload.rover?.name || "rover"}.`, "ok");
     } catch (error) {
-      setMessage(executeMessage, `SSH help error: ${error.message}`, "error");
+      setMessage(executeMessage, friendlyError(error.message, "SSH help unavailable"), "error");
     }
   }
 
@@ -362,12 +414,25 @@
       try {
         await scanRovers(true);
       } catch (error) {
-        setMessage(healthMessage, `Rescan failed: ${error.message}`, "error");
+        setMessage(healthMessage, friendlyError(error.message, "Rescan failed"), "error");
       }
     });
     refreshHealthBtn.addEventListener("click", refreshHealth);
     executeBtn.addEventListener("click", executeCode);
     sshBtn.addEventListener("click", showSshHelp);
+
+    for (const button of streamButtons) {
+      button.addEventListener("click", () => {
+        const stream = button.dataset.stream || "video";
+        selectedStream = STREAM_PATHS[stream] ? stream : "video";
+        setActiveStreamButton();
+        setCameraPlaceholder();
+      });
+    }
+
+    cameraStreamImg.addEventListener("error", () => {
+      cameraRoverName.textContent = `Stream unavailable (${STREAM_PATHS[selectedStream] || STREAM_PATHS.video}). You're likely not connected to rover network, or camera service is offline on ${activeRover?.host || "selected rover"}:8001.`;
+    });
 
     modalClose.addEventListener("click", closeModal);
     modalOverlay.addEventListener("click", (event) => {
@@ -407,10 +472,11 @@
     try {
       await refreshRoversFromServer();
     } catch (error) {
-      setMessage(healthMessage, `Could not refresh rover list: ${error.message}`, "error");
+      setMessage(healthMessage, friendlyError(error.message, "Could not refresh rover list"), "error");
     }
 
     populateRoverOptions();
+    setActiveStreamButton();
     setCameraPlaceholder();
     window.RoverMapping?.setRovers(state.rovers);
     wireEvents();
@@ -419,7 +485,7 @@
     try {
       await scanRovers(false);
     } catch (error) {
-      setMessage(healthMessage, `Initial rover scan failed: ${error.message}`, "error");
+      setMessage(healthMessage, friendlyError(error.message, "Initial rover scan failed"), "error");
     }
 
     setInterval(refreshHealth, 10000);

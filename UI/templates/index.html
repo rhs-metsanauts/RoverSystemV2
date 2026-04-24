@@ -33,28 +33,34 @@
 
       <section class="grid">
         <article class="panel camera-panel">
-          <h2>Camera Feed</h2>
-            <div class="camera-placeholder" id="camera-placeholder">
-              <img id="camera-feed" class="camera-feed hidden" alt="Active rover camera feed" />
-            <div>
-                <p class="placeholder-title">Stereo Stream</p>
-              <p id="camera-rover-name">Select a rover to begin.</p>
+          <div class="camera-header">
+            <h2>Camera Feed</h2>
+            <div class="stream-switcher" role="group" aria-label="Camera stream selector">
+              <button class="stream-btn active" data-stream="video" type="button">Video</button>
+              <button class="stream-btn" data-stream="left" type="button">Left</button>
+              <button class="stream-btn" data-stream="right" type="button">Right</button>
             </div>
+          </div>
+          <div class="camera-frame" id="camera-frame">
+            <img id="camera-stream-img" alt="Rover camera stream" />
+          </div>
+          <div class="camera-meta">
+            <p id="camera-rover-name">Select a rover to begin.</p>
           </div>
         </article>
 
-          <article class="panel mapping-panel">
-            <div class="mapping-header">
-              <h2>Live Mapping</h2>
-              <div class="mapping-controls">
-                <button id="mapping-start-btn" class="btn btn-soft" type="button">Start</button>
-                <button id="mapping-stop-btn" class="btn btn-soft" type="button">Stop</button>
-                <button id="mapping-clear-btn" class="btn btn-outline" type="button">Clear</button>
-              </div>
+        <article class="panel mapping-panel">
+          <div class="mapping-header">
+            <h2>Live Mapping</h2>
+            <div class="mapping-controls">
+              <button id="mapping-start-btn" class="btn btn-soft" type="button">Start</button>
+              <button id="mapping-stop-btn" class="btn btn-soft" type="button">Stop</button>
+              <button id="mapping-clear-btn" class="btn btn-outline" type="button">Clear</button>
             </div>
-            <p id="mapping-status" class="message">Mapping idle.</p>
-            <div id="mapping-viewport" class="mapping-viewport"></div>
-          </article>
+          </div>
+          <p id="mapping-status" class="message">Mapping idle.</p>
+          <div id="mapping-viewport" class="mapping-viewport"></div>
+        </article>
 
         <article class="panel health-panel">
           <div class="health-header">

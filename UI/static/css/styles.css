@@ -148,11 +148,47 @@ input {
   padding: 18px;
 }
 
-.camera-placeholder {
+.camera-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.stream-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stream-btn {
+  border: 1px solid rgba(96, 213, 255, 0.45);
+  background: rgba(12, 26, 52, 0.9);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stream-btn:hover {
+  color: var(--text);
+  border-color: rgba(96, 213, 255, 0.7);
+}
+
+.stream-btn.active {
+  color: #07142a;
+  background: linear-gradient(130deg, var(--accent), #87e3ff);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.camera-frame {
   margin-top: 12px;
   border: 1px dashed rgba(96, 213, 255, 0.55);
   border-radius: 12px;
-  min-height: 250px;
+  min-height: 280px;
   display: grid;
   place-items: center;
   background: repeating-linear-gradient(
@@ -162,15 +198,24 @@ input {
     rgba(14, 34, 66, 0.72) 15px,
     rgba(14, 34, 66, 0.72) 30px
   );
-  position: relative;
-  overflow: hidden;
 }
 
-.camera-feed {
+.camera-frame img {
   width: 100%;
   height: 100%;
+  min-height: 280px;
   object-fit: cover;
-  border-radius: 12px;
+  display: block;
+}
+
+.camera-meta {
+  margin-top: 10px;
+}
+
+.camera-meta p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .mapping-panel {
@@ -198,11 +243,6 @@ input {
   background: rgba(4, 10, 24, 0.92);
   min-height: 280px;
   overflow: hidden;
-}
-
-.placeholder-title {
-  font-size: 1.1rem;
-  margin-bottom: 8px;
 }
 
 .health-panel {
