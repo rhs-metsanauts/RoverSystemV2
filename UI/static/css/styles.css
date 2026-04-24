@@ -198,24 +198,8 @@ input {
     rgba(14, 34, 66, 0.72) 15px,
     rgba(14, 34, 66, 0.72) 30px
   );
-}
-
-.camera-frame img {
-  width: 100%;
-  height: 100%;
-  min-height: 280px;
-  object-fit: cover;
-  display: block;
-}
-
-.camera-meta {
-  margin-top: 10px;
-}
-
-.camera-meta p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
+  position: relative;
+  overflow: hidden;
 }
 
 .mapping-panel {
@@ -243,6 +227,24 @@ input {
   background: rgba(4, 10, 24, 0.92);
   min-height: 280px;
   overflow: hidden;
+}
+
+.camera-frame img {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  object-fit: cover;
+  display: block;
+}
+
+.camera-meta {
+  margin-top: 10px;
+}
+
+.camera-meta p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .health-panel {
