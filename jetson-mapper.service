@@ -1,0 +1,16 @@
+[Unit]
+Description=Jetson ZED Mapper (MJPEG + WebSocket)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rover
+WorkingDirectory=/home/rover/Documents/RoverSystemV2
+ExecStart=/usr/bin/python /home/rover/Documents/RoverSystemV2/jetson_mapper.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
