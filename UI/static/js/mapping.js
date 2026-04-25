@@ -20,41 +20,7 @@
   // One solid colour per rover index (cycled for >4 rovers)
   const ROVER_COLORS = [0x4a9eff, 0xff8c4a, 0x4aff8c, 0xd44aff];
 
-  // Object detection — colour and display label per class
-  const OBJ_COLORS = {
-    PERSON:          0x00e5ff,
-    VEHICLE:         0xff6d00,
-    ANIMAL:          0x76ff03,
-    BAG:             0xffea00,
-    ELECTRONICS:     0xe040fb,
-    FRUIT_VEGETABLE: 0xff4081,
-    SPORT:           0x69f0ae,
-  };
-  const DEFAULT_OBJ_COLOR = 0xffffff;
   const TRACKING_STALE_MS = 3500;
-
-  function makeObjectLabel(text, color) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 256; canvas.height = 64;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = `#${color.toString(16).padStart(6, "0")}`;
-    ctx.font = "bold 28px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, 128, 32);
-    const tex = new THREE.CanvasTexture(canvas);
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-    const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(0.6, 0.15, 1);
-    return sprite;
-  }
-
-  function makeObjectBox(dims, color) {
-    const [w, h, d] = dims.map((v) => Math.max(v, 0.1));
-    const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d));
-    const mat = new THREE.LineBasicMaterial({ color, linewidth: 1 });
-    return new THREE.LineSegments(edges, mat);
-  }
 
   function makeRoverMarker(roverIdx) {
     const markerColors = [0xffb84d, 0x4dffd2, 0xff4d4d, 0xd24dff];
@@ -214,19 +180,6 @@
     session.trailPoints  = [];
     session.lastVertices = null;
     session.lastFaces    = null;
-    clearObjectMeshes(session);
-  }
-
-  function clearObjectMeshes(session) {
-    for (const { box, label } of session.objectMeshes.values()) {
-      scene.three.remove(box);
-      scene.three.remove(label);
-      box.geometry.dispose();
-      box.material.dispose();
-      label.material.map.dispose();
-      label.material.dispose();
-    }
-    session.objectMeshes.clear();
   }
 
   function updateTrail(session, px, py, pz) {
@@ -245,45 +198,6 @@
     const color = ROVER_COLORS[session.roverIdx % ROVER_COLORS.length];
     session.trailLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 }));
     scene.three.add(session.trailLine);
-  }
-
-  function updateObjectDetections(session, objects) {
-    const now = Date.now();
-    const seenIds = new Set();
-
-    for (const obj of objects) {
-      seenIds.add(obj.id);
-      const color = OBJ_COLORS[obj.label] ?? DEFAULT_OBJ_COLOR;
-      const [px, py, pz] = obj.position;
-
-      if (session.objectMeshes.has(obj.id)) {
-        const entry = session.objectMeshes.get(obj.id);
-        entry.box.position.set(px, py, pz);
-        entry.label.position.set(px, py + (obj.dimensions[1] / 2) + 0.15, pz);
-        entry.lastSeen = now;
-      } else {
-        const box   = makeObjectBox(obj.dimensions, color);
-        const label = makeObjectLabel(obj.label, color);
-        box.position.set(px, py, pz);
-        label.position.set(px, py + (obj.dimensions[1] / 2) + 0.15, pz);
-        scene.three.add(box);
-        scene.three.add(label);
-        session.objectMeshes.set(obj.id, { box, label, lastSeen: now });
-      }
-    }
-
-    // Remove objects not seen for >3 s
-    for (const [id, entry] of session.objectMeshes) {
-      if (!seenIds.has(id) && now - entry.lastSeen > 800) {
-        scene.three.remove(entry.box);
-        scene.three.remove(entry.label);
-        entry.box.geometry.dispose();
-        entry.box.material.dispose();
-        entry.label.material.map.dispose();
-        entry.label.material.dispose();
-        session.objectMeshes.delete(id);
-      }
-    }
   }
 
   // ---------------------------------------------------------- global merge
@@ -432,11 +346,6 @@
       return;
     }
 
-    if (msg.type === "object_detections") {
-      updateObjectDetections(session, msg.objects || []);
-      return;
-    }
-
     if (msg.type === "map_chunk") {
       if (
         !Array.isArray(msg.vertices) ||
@@ -484,7 +393,6 @@
       lastPoseAt: Date.now(),
       lastVertices: null,
       lastFaces: null,
-      objectMeshes: new Map(),
     };
     sessions.set(rover.name, session);
 

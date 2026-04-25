@@ -325,8 +325,8 @@ class JetsonMapper:
     def _find_floor_plane(self) -> float | None:
         try:
             plane = sl.Plane()
-            reset_quat = sl.Quaternion()
-            if self.zed.find_floor_plane(plane, reset_quat) == sl.ERROR_CODE.SUCCESS:
+            reset_pose = sl.Pose()
+            if self.zed.find_floor_plane(plane, reset_pose) == sl.ERROR_CODE.SUCCESS:
                 centre = np.asarray(plane.get_center())
                 return round(float(centre[1]), 3) if centre.size >= 3 else None
         except Exception as e:
