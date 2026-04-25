@@ -48,7 +48,7 @@ class MapperConfig:
     range_m: float = float(os.getenv("MAPPER_RANGE_M", "5.0"))
     fps: int = int(os.getenv("MAPPER_FPS", "15"))
     # Extract and broadcast mesh every N grabs (default ~4 s at 15 fps)
-    mesh_interval: int = int(os.getenv("MAPPER_MESH_INTERVAL", "60"))
+    mesh_interval: int = int(os.getenv("MAPPER_MESH_INTERVAL", "20"))
     max_faces: int = int(os.getenv("MAPPER_MAX_FACES", "4000"))
 
 
@@ -63,6 +63,7 @@ class JetsonMapper:
         self._mjpeg_queues: dict[int, asyncio.Queue[bytes]] = {}
         self._mjpeg_paths: dict[int, str] = {}
         self._mat = sl.Mat()
+        self._sensors = sl.SensorsData()
 
         self._init_camera()
 
@@ -97,7 +98,7 @@ class JetsonMapper:
         self._od_enabled = False
         try:
             od_params = sl.ObjectDetectionParameters()
-            od_params.detection_model = sl.OBJECT_DETECTION_MODEL.MULTI_CLASS_BOX_FAST
+            od_params.detection_model = sl.OBJECT_DETECTION_MODEL.MULTI_CLASS_BOX_MEDIUM
             od_params.enable_tracking = True
             od_params.max_range = self.config.range_m
             od_status = self.zed.enable_object_detection(od_params)
@@ -129,14 +130,10 @@ class JetsonMapper:
 
     def _grab_frame(
         self, capture: bool, get_pose: bool, view: sl.VIEW | None = None
-    ) -> tuple[bool, bytes | None, dict | None, list[dict]]:
-        """All ZED calls in one thread: grab + optional image + pose + objects.
-
-        Returns pose as a dict containing both position and orientation so that
-        the caller can broadcast full 6-DOF state, matching the SDK docs.
-        """
+    ) -> tuple[bool, bytes | None, dict | None, list[dict], dict | None]:
+        """All ZED calls in one thread: grab + optional image + pose + objects + sensors."""
         if self.zed.grab(self.runtime) != sl.ERROR_CODE.SUCCESS:
-            return False, None, None, []
+            return False, None, None, [], None
 
         # --- pose (position + orientation) ---
         # FIX: capture orientation quaternion in addition to translation,
@@ -182,25 +179,50 @@ class JetsonMapper:
         frame: bytes | None = None
         if capture and self._mjpeg_queues:
             image_view = view or sl.VIEW.LEFT
+            is_depth = (image_view == sl.VIEW.DEPTH)
             if self.zed.retrieve_image(self._mat, image_view) == sl.ERROR_CODE.SUCCESS:
                 raw = self._mat.get_data()
                 if raw is not None:
                     arr = np.asarray(raw)
                     if arr.ndim >= 3 and arr.size > 0:
-                        img = Image.fromarray(np.ascontiguousarray(arr[:, :, 2::-1]))
-                        if overlays:
-                            draw = ImageDraw.Draw(img)
-                            for corners, text, color in overlays:
-                                pts = [(int(corners[i, 0]), int(corners[i, 1])) for i in range(4)]
-                                draw.polygon(pts, outline=color)
-                                tx, ty = pts[0]
-                                draw.rectangle([tx, ty - 18, tx + len(text) * 8, ty], fill=color)
-                                draw.text((tx + 2, ty - 17), text, fill=(0, 0, 0), font=_LABEL_FONT)
+                        if is_depth:
+                            # DEPTH view is grayscale in BGRA — take the single channel
+                            img = Image.fromarray(np.ascontiguousarray(arr[:, :, 0]), mode="L")
+                        else:
+                            img = Image.fromarray(np.ascontiguousarray(arr[:, :, 2::-1]))
+                            if overlays:
+                                draw = ImageDraw.Draw(img)
+                                for corners, text, color in overlays:
+                                    pts = [(int(corners[i, 0]), int(corners[i, 1])) for i in range(4)]
+                                    draw.polygon(pts, outline=color)
+                                    tx, ty = pts[0]
+                                    draw.rectangle([tx, ty - 18, tx + len(text) * 8, ty], fill=color)
+                                    draw.text((tx + 2, ty - 17), text, fill=(0, 0, 0), font=_LABEL_FONT)
                         buf = io.BytesIO()
                         img.save(buf, format="JPEG", quality=55)
                         frame = buf.getvalue()
 
-        return True, frame, pose_data, objects
+        # --- sensors (IMU / barometer / temperature) ---
+        sensor_data: dict | None = None
+        try:
+            if self.zed.get_sensors_data(self._sensors, sl.TIME_REFERENCE.IMAGE) == sl.ERROR_CODE.SUCCESS:
+                imu = self._sensors.get_imu_data()
+                accel = np.asarray(imu.get_linear_acceleration().get())
+                motion_g = round(float(np.linalg.norm(accel)) / 9.81, 3) if accel.size >= 3 else 0.0
+                baro = self._sensors.get_barometric_pressure_data()
+                alt_m = round(float(baro.relative_altitude), 2)
+                sensor_data = {"motion_g": motion_g, "altitude_m": alt_m}
+                try:
+                    t = self._sensors.get_temperature_data()
+                    tl = t.temperature_list
+                    sensor_data["temp_left_c"]  = round(float(tl[sl.SENSOR_LOCATION.ONBOARD_LEFT]),  1)
+                    sensor_data["temp_right_c"] = round(float(tl[sl.SENSOR_LOCATION.ONBOARD_RIGHT]), 1)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        return True, frame, pose_data, objects, sensor_data
 
     async def _push_mjpeg_frame(self, frame: bytes, path_suffix: str | None = None) -> None:
         chunk = (
@@ -222,23 +244,26 @@ class JetsonMapper:
             except asyncio.QueueFull:
                 pass
 
-    def _view_for_path(self, path: str) -> sl.VIEW:
-        if path.endswith("/right.mjpg"):
-            return sl.VIEW.RIGHT
-        return sl.VIEW.LEFT
-
     def _stream_key_for_path(self, path: str) -> str:
         if path.endswith("/right.mjpg"):
             return "/right.mjpg"
+        if path.endswith("/depth.mjpg"):
+            return "/depth.mjpg"
+        if path.endswith("/video.mjpg"):
+            return "/video.mjpg"
         return "/left.mjpg"
 
     def _active_mjpeg_views(self) -> list[tuple[str, sl.VIEW]]:
         paths = {path for path in self._mjpeg_paths.values()}
         views: list[tuple[str, sl.VIEW]] = []
-        if "/video.mjpg" in paths or "/left.mjpg" in paths:
+        if "/video.mjpg" in paths:
+            views.append(("/video.mjpg", sl.VIEW.SIDE_BY_SIDE))
+        if "/left.mjpg" in paths:
             views.append(("/left.mjpg", sl.VIEW.LEFT))
         if "/right.mjpg" in paths:
             views.append(("/right.mjpg", sl.VIEW.RIGHT))
+        if "/depth.mjpg" in paths:
+            views.append(("/depth.mjpg", sl.VIEW.DEPTH))
         return views
 
     async def _mjpeg_handler(
@@ -253,7 +278,7 @@ class JetsonMapper:
 
             parts = request_line.decode(errors="ignore").split()
             path = parts[1] if len(parts) >= 2 else "/"
-            if not any(path.endswith(p) for p in ("/video.mjpg", "/left.mjpg", "/right.mjpg")):
+            if not any(path.endswith(p) for p in ("/video.mjpg", "/left.mjpg", "/right.mjpg", "/depth.mjpg")):
                 writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found")
                 await writer.drain()
                 return
@@ -270,8 +295,6 @@ class JetsonMapper:
             qid = id(writer)
             self._mjpeg_queues[qid] = q
             self._mjpeg_paths[qid] = self._stream_key_for_path(path)
-
-            view = self._view_for_path(path)
 
             while not writer.is_closing():
                 try:
@@ -298,6 +321,17 @@ class JetsonMapper:
                 await writer.wait_closed()
             except Exception:
                 pass
+
+    def _find_floor_plane(self) -> float | None:
+        try:
+            plane = sl.Plane()
+            reset_quat = sl.Quaternion()
+            if self.zed.find_floor_plane(plane, reset_quat) == sl.ERROR_CODE.SUCCESS:
+                centre = np.asarray(plane.get_center())
+                return round(float(centre[1]), 3) if centre.size >= 3 else None
+        except Exception as e:
+            print(f"[warn] floor plane: {e}")
+        return None
 
     # ----------------------------------------------------------------- mapping
 
@@ -443,10 +477,11 @@ class JetsonMapper:
 
                 pose_data: dict | None = None
                 objects: list[dict] = []
+                sensor_data: dict | None = None
                 grabbed_any = False
 
                 for idx, (path_suffix, view) in enumerate(active_views):
-                    grabbed, frame, pose, found_objects = await loop.run_in_executor(
+                    grabbed, frame, pose, found_objects, snsr = await loop.run_in_executor(
                         None, self._grab_frame, do_capture, self.mapping_active, view
                     )
                     if not grabbed:
@@ -455,6 +490,7 @@ class JetsonMapper:
                     if idx == 0:
                         pose_data = pose
                         objects = found_objects
+                        sensor_data = snsr
                     if frame is not None:
                         await self._push_mjpeg_frame(frame, path_suffix)
 
@@ -469,6 +505,14 @@ class JetsonMapper:
                         "type": "object_detections",
                         "rover_id": self.config.rover_id,
                         "objects": objects,
+                        "timestamp": loop.time(),
+                    })
+
+                if sensor_data and self.clients and _grab_total % 30 == 0:
+                    await self._broadcast({
+                        "type": "sensor_snapshot",
+                        "rover_id": self.config.rover_id,
+                        **sensor_data,
                         "timestamp": loop.time(),
                     })
 
@@ -502,6 +546,15 @@ class JetsonMapper:
                                 "timestamp": loop.time(),
                             })
                             self.seq += 1
+
+                    if self._grab_count % 75 == 0 and self._grab_count > 0:
+                        floor_y = await loop.run_in_executor(None, self._find_floor_plane)
+                        if floor_y is not None:
+                            await self._broadcast({
+                                "type": "floor_plane",
+                                "rover_id": self.config.rover_id,
+                                "y": floor_y,
+                            })
                 else:
                     self._grab_count = 0
 

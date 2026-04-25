@@ -39,6 +39,7 @@
               <button class="stream-btn active" data-stream="video" type="button">Video</button>
               <button class="stream-btn" data-stream="left" type="button">Left</button>
               <button class="stream-btn" data-stream="right" type="button">Right</button>
+              <button class="stream-btn" data-stream="depth" type="button">Depth</button>
             </div>
           </div>
           <div class="camera-frame" id="camera-frame">
@@ -93,6 +94,26 @@
           </div>
 
           <div id="health-summary" class="health-summary"></div>
+          <div id="health-zed-section" style="display:none" class="health-zed-section">
+            <p class="health-section-label">ZED Camera Sensors</p>
+            <div class="health-grid">
+              <section class="health-card">
+                <h3>ZED Temp</h3>
+                <p class="health-value" id="zed-temp-value">--</p>
+                <p class="health-details">Left / Right camera sensor</p>
+              </section>
+              <section class="health-card">
+                <h3>Altitude</h3>
+                <p class="health-value" id="zed-alt-value">--</p>
+                <p class="health-details">Relative from barometer</p>
+              </section>
+              <section class="health-card">
+                <h3>Motion</h3>
+                <p class="health-value" id="zed-motion-value">--</p>
+                <p class="health-details">IMU accel magnitude</p>
+              </section>
+            </div>
+          </div>
           <p id="health-message" class="message"></p>
         </article>
       </section>

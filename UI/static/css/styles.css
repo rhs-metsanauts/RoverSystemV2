@@ -425,7 +425,7 @@ input {
 
 .health-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -580,8 +580,37 @@ pre {
   color: var(--good);
 }
 
+.warn {
+  color: #ffcc44;
+}
+
 .error {
   color: var(--bad);
+}
+
+.health-total {
+  font-weight: 400;
+  font-size: 0.82em;
+  color: var(--muted);
+}
+
+.health-mount {
+  font-family: "IBM Plex Sans", sans-serif;
+  font-weight: 400;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+
+.health-zed-section {
+  margin-top: 12px;
+}
+
+.health-section-label {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
 }
 
 @media (max-width: 1024px) {

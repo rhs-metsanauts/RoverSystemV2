@@ -38,6 +38,7 @@
     video: "video.mjpg",
     left: "left.mjpg",
     right: "right.mjpg",
+    depth: "depth.mjpg",
   };
 
   function setMessage(element, text, kind) {
@@ -235,42 +236,57 @@
     }
 
     const summary = record.summary || {};
-    const raw = record.raw || {};
-    const temp = summary.max_temp_c !== null && summary.max_temp_c !== undefined ? `${summary.max_temp_c} °C` : "--";
-    const cpu = formatCpu(summary.cpu_load);
-    const memory = formatMemory(summary.memory);
-    const disk = formatDisk(summary.disk);
+    const tempVal = summary.max_temp_c !== null && summary.max_temp_c !== undefined ? summary.max_temp_c : null;
+    const tempStr = tempVal !== null ? `${tempVal} °C` : "--";
+    const tempClass = tempVal === null ? "" : tempVal > 75 ? "error" : tempVal > 60 ? "warn" : "ok";
+
+    const cpuLoad = summary.cpu_load || {};
+    const cpu1 = cpuLoad["1min"] !== undefined ? cpuLoad["1min"] : "--";
+    const cpu5 = cpuLoad["5min"] !== undefined ? cpuLoad["5min"] : "--";
+    const cpu15 = cpuLoad["15min"] !== undefined ? cpuLoad["15min"] : "--";
+
+    const mem = summary.memory || {};
+    const memUsed = mem.used || "--";
+    const memTotal = mem.total || "--";
+    const memFree = mem.free || "--";
+
+    const disk = summary.disk || {};
+    const diskMount = disk.mount || "/";
+    const diskUsed = disk.used || "--";
+    const diskSize = disk.size || "--";
+    const diskPct = disk.use_pct || "--";
+
     const status = (summary.status || "unknown").toString().toUpperCase();
+    const statusClass = status === "OK" ? "ok" : "error";
 
     healthSummary.innerHTML = `
       <div class="health-grid">
         <section class="health-card">
           <h3>Status</h3>
-          <p class="health-value">${escapeHtml(status)}</p>
-          <p class="health-details">${escapeHtml(rover.name || "Selected rover")} • ${escapeHtml(rover.host || "--")}</p>
+          <p class="health-value ${escapeHtml(statusClass)}">${escapeHtml(status)}</p>
+          <p class="health-details">${escapeHtml(rover.name || "Selected rover")} · ${escapeHtml(rover.host || "--")}</p>
         </section>
         <section class="health-card">
-          <h3>Temp</h3>
-          <p class="health-value">${escapeHtml(temp)}</p>
-          <p class="health-details">Max temperature reported by the rover health endpoint.</p>
+          <h3>Max Temp</h3>
+          <p class="health-value ${escapeHtml(tempClass)}">${escapeHtml(tempStr)}</p>
+          <p class="health-details">Hottest sensor on the Jetson board</p>
         </section>
         <section class="health-card">
-          <h3>CPU</h3>
-          <p class="health-value">${escapeHtml(cpu)}</p>
-          <p class="health-details">Load averages: 1m / 5m / 15m.</p>
+          <h3>CPU Load</h3>
+          <p class="health-value">${escapeHtml(String(cpu1))}</p>
+          <p class="health-details">1 min avg · 5 min: ${escapeHtml(String(cpu5))} · 15 min: ${escapeHtml(String(cpu15))}</p>
         </section>
         <section class="health-card">
           <h3>RAM</h3>
-          <p class="health-value">${escapeHtml(memory)}</p>
-          <p class="health-details">Memory usage and free/available totals.</p>
+          <p class="health-value">${escapeHtml(memUsed)} <span class="health-total">/ ${escapeHtml(memTotal)}</span></p>
+          <p class="health-details">Free: ${escapeHtml(memFree)}</p>
+        </section>
+        <section class="health-card">
+          <h3>Disk <span class="health-mount">${escapeHtml(diskMount)}</span></h3>
+          <p class="health-value">${escapeHtml(diskUsed)} <span class="health-total">/ ${escapeHtml(diskSize)}</span></p>
+          <p class="health-details">Used: ${escapeHtml(diskPct)}</p>
         </section>
       </div>
-      <section class="health-card">
-        <h3>Disk</h3>
-        <p class="health-value">${escapeHtml(disk)}</p>
-        <p class="health-details">Primary disk usage details.</p>
-      </section>
-      <div class="health-raw">${escapeHtml(JSON.stringify(raw, null, 2))}</div>
     `;
   }
 
@@ -674,6 +690,27 @@
       await refreshActiveHealth();
     }, 10000);
   }
+
+  window.RoverSensors = {
+    update(snap) {
+      const section = document.getElementById("health-zed-section");
+      if (!section) return;
+      section.style.display = "";
+
+      const tl = snap.temp_left_c  != null ? `${snap.temp_left_c} °C`  : "--";
+      const tr = snap.temp_right_c != null ? `${snap.temp_right_c} °C` : "--";
+      const alt = snap.altitude_m  != null ? `${snap.altitude_m} m`    : "--";
+      const mot = snap.motion_g    != null ? `${snap.motion_g} g`      : "--";
+
+      const tempEl = document.getElementById("zed-temp-value");
+      const altEl  = document.getElementById("zed-alt-value");
+      const motEl  = document.getElementById("zed-motion-value");
+
+      if (tempEl) tempEl.textContent = `${tl} / ${tr}`;
+      if (altEl)  altEl.textContent  = alt;
+      if (motEl)  motEl.textContent  = mot;
+    },
+  };
 
   start();
 })();

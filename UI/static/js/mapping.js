@@ -87,10 +87,11 @@
     camera:   null,
     renderer: null,
     controls: null,
+    grid:     null,
   };
 
   // Per-rover session keyed by rover.name
-  // Entry: { rover, ws, mesh, marker, roverIdx, connected, lastVertices, lastFaces }
+  // Entry: { rover, ws, layers, trailPoints, trailLine, marker, roverIdx, connected, lastVertices, lastFaces }
   const sessions = new Map();
 
   // Global merge state
@@ -137,37 +138,80 @@
   function updateRoverMesh(session, vertices, faces) {
     if (vertices.length === 0 || faces.length === 0) return;
 
+    if (session.layers) {
+      const { face, edges, points } = session.layers;
+      scene.three.remove(face);
+      scene.three.remove(edges);
+      scene.three.remove(points);
+      face.geometry.dispose();
+      face.material.dispose();
+      edges.geometry.dispose();
+      edges.material.dispose();
+      points.geometry.dispose();
+      points.material.dispose();
+      session.layers = null;
+    }
+
+    const color = ROVER_COLORS[session.roverIdx % ROVER_COLORS.length];
+
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
     geometry.setIndex(new THREE.BufferAttribute(faces, 1));
     geometry.computeVertexNormals();
 
-    if (session.mesh) {
-      scene.three.remove(session.mesh);
-      session.mesh.geometry.dispose();
-      session.mesh.material.dispose();
-    }
-
-    const material = new THREE.MeshLambertMaterial({
-      color: ROVER_COLORS[session.roverIdx % ROVER_COLORS.length],
+    const face = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
+      color,
+      transparent: true,
+      opacity: 0.08,
       side: THREE.DoubleSide,
-    });
+    }));
 
-    session.mesh = new THREE.Mesh(geometry, material);
-    scene.three.add(session.mesh);
+    const edgeGeo = new THREE.EdgesGeometry(geometry);
+    const edges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.7,
+    }));
 
-    // Keep raw arrays so mergeAllMeshes() can combine them later
+    const pointGeo = new THREE.BufferGeometry();
+    pointGeo.setAttribute("position", new THREE.BufferAttribute(vertices.slice(), 3));
+    const points = new THREE.Points(pointGeo, new THREE.PointsMaterial({
+      color,
+      size: 0.02,
+      transparent: true,
+      opacity: 0.9,
+    }));
+
+    scene.three.add(face);
+    scene.three.add(edges);
+    scene.three.add(points);
+
+    session.layers = { face, edges, points };
     session.lastVertices = vertices;
     session.lastFaces    = faces;
   }
 
   function clearRoverMesh(session) {
-    if (session.mesh) {
-      scene.three.remove(session.mesh);
-      session.mesh.geometry.dispose();
-      session.mesh.material.dispose();
-      session.mesh = null;
+    if (session.layers) {
+      const { face, edges, points } = session.layers;
+      scene.three.remove(face);
+      scene.three.remove(edges);
+      scene.three.remove(points);
+      face.geometry.dispose();
+      face.material.dispose();
+      edges.geometry.dispose();
+      edges.material.dispose();
+      points.geometry.dispose();
+      points.material.dispose();
+      session.layers = null;
     }
+    if (session.trailLine) {
+      scene.three.remove(session.trailLine);
+      session.trailLine.geometry.dispose();
+      session.trailLine.material.dispose();
+      session.trailLine = null;
+    }
+    session.trailPoints  = [];
     session.lastVertices = null;
     session.lastFaces    = null;
     clearObjectMeshes(session);
@@ -183,6 +227,24 @@
       label.material.dispose();
     }
     session.objectMeshes.clear();
+  }
+
+  function updateTrail(session, px, py, pz) {
+    session.trailPoints.push(px, py, pz);
+    if (session.trailPoints.length > 1500) {
+      session.trailPoints.splice(0, 3);
+    }
+    if (session.trailLine) {
+      scene.three.remove(session.trailLine);
+      session.trailLine.geometry.dispose();
+      session.trailLine.material.dispose();
+      session.trailLine = null;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(session.trailPoints), 3));
+    const color = ROVER_COLORS[session.roverIdx % ROVER_COLORS.length];
+    session.trailLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 }));
+    scene.three.add(session.trailLine);
   }
 
   function updateObjectDetections(session, objects) {
@@ -212,7 +274,7 @@
 
     // Remove objects not seen for >3 s
     for (const [id, entry] of session.objectMeshes) {
-      if (!seenIds.has(id) && now - entry.lastSeen > 3000) {
+      if (!seenIds.has(id) && now - entry.lastSeen > 800) {
         scene.three.remove(entry.box);
         scene.three.remove(entry.label);
         entry.box.geometry.dispose();
@@ -275,11 +337,12 @@
     );
     scene.three.add(globalMesh);
 
-    // Fade individual rover meshes so the global mesh reads clearly
+    // Fade individual rover layers so the global mesh reads clearly
     for (const session of sessions.values()) {
-      if (session.mesh) {
-        session.mesh.material.transparent = true;
-        session.mesh.material.opacity = 0.2;
+      if (session.layers) {
+        session.layers.face.material.opacity  = 0.03;
+        session.layers.edges.material.opacity = 0.2;
+        session.layers.points.material.opacity = 0.2;
       }
     }
 
@@ -300,9 +363,10 @@
       globalMesh = null;
     }
     for (const session of sessions.values()) {
-      if (session.mesh) {
-        session.mesh.material.transparent = false;
-        session.mesh.material.opacity = 1.0;
+      if (session.layers) {
+        session.layers.face.material.opacity  = 0.08;
+        session.layers.edges.material.opacity = 0.7;
+        session.layers.points.material.opacity = 0.9;
       }
     }
     mergedView = false;
@@ -330,11 +394,11 @@
     if (msg.type === "pose_update") {
       session.lastPoseAt = Date.now();
       const pos = Array.isArray(msg.position) ? msg.position : [0, 0, 0];
-      session.marker.position.set(
-        Number(pos[0] || 0),
-        Number(pos[1] || 0),
-        Number(pos[2] || 0)
-      );
+      const px = Number(pos[0] || 0);
+      const py = Number(pos[1] || 0);
+      const pz = Number(pos[2] || 0);
+      session.marker.position.set(px, py, pz);
+      updateTrail(session, px, py, pz);
 
       const orientation = Array.isArray(msg.orientation) ? msg.orientation : null;
       if (orientation && orientation.length === 4) {
@@ -352,6 +416,19 @@
           session.marker.quaternion.set(qx, qy, qz, qw);
         }
       }
+      return;
+    }
+
+    if (msg.type === "sensor_snapshot") {
+      if (window.RoverSensors && typeof window.RoverSensors.update === "function") {
+        window.RoverSensors.update(msg);
+      }
+      return;
+    }
+
+    if (msg.type === "floor_plane") {
+      const y = Number(msg.y || 0);
+      if (scene.grid) scene.grid.position.y = y;
       return;
     }
 
@@ -397,7 +474,9 @@
     const session = {
       rover,
       ws: null,
-      mesh: null,
+      layers: null,
+      trailPoints: [],
+      trailLine: null,
       marker,
       roverIdx,
       connected: false,
@@ -509,7 +588,8 @@
     viewportEl.innerHTML = "";
     viewportEl.appendChild(scene.renderer.domElement);
 
-    scene.three.add(new THREE.GridHelper(6, 24, 0x2f7fd8, 0x1c355f));
+    scene.grid = new THREE.GridHelper(6, 24, 0x2f7fd8, 0x1c355f);
+    scene.three.add(scene.grid);
     scene.three.add(new THREE.AmbientLight(0xffffff, 0.5));
     const sun = new THREE.DirectionalLight(0xffffff, 0.9);
     sun.position.set(2, 3, 4);
