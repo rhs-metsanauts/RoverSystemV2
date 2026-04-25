@@ -16,10 +16,10 @@ class Drivetrain:
         # Send neutral (90°) and hold it so the ESC arms
         self.hat.move_servo_position(self.left_channel,  126)
         self.hat.move_servo_position(self.right_channel, 126)
-        time.sleep(0.1)
+        time.sleep(0.02)
         self.hat.move_servo_position(self.left_channel,  54)
         self.hat.move_servo_position(self.right_channel, 54)
-        time.sleep(0.1)
+        time.sleep(0.02)
         self.setPowers(0, 0)  # Ensure motors are stopped after arming
         
         

@@ -19,9 +19,9 @@ class Rover:
     def backward(self, power):
         self.setPowers(-power, -power) 
     def turnLeft(self, power):
-        self.setPowers(-power, power)
-    def turnRight(self, power):
         self.setPowers(power, -power)
+    def turnRight(self, power):
+        self.setPowers(-power, power)
     def stop(self):
         self.setPowers(0, 0)
 
