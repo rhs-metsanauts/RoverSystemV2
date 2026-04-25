@@ -91,7 +91,7 @@
   };
 
   // Per-rover session keyed by rover.name
-  // Entry: { rover, ws, layers, trailPoints, trailLine, marker, roverIdx, connected, lastVertices, lastFaces }
+  // Entry: { rover, ws, layers, trailPoints, trailLine, marker, roverIdx, connected, lastVertices }
   const sessions = new Map();
 
   // Global merge state
@@ -135,18 +135,12 @@
 
   // ---------------------------------------------------------- mesh
 
-  function updateRoverMesh(session, vertices, faces) {
-    if (vertices.length === 0 || faces.length === 0) return;
+  function updateRoverMesh(session, vertices) {
+    if (vertices.length === 0) return;
 
     if (session.layers) {
-      const { face, edges, points } = session.layers;
-      scene.three.remove(face);
-      scene.three.remove(edges);
+      const { points } = session.layers;
       scene.three.remove(points);
-      face.geometry.dispose();
-      face.material.dispose();
-      edges.geometry.dispose();
-      edges.material.dispose();
       points.geometry.dispose();
       points.material.dispose();
       session.layers = null;
@@ -154,53 +148,25 @@
 
     const color = ROVER_COLORS[session.roverIdx % ROVER_COLORS.length];
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
-    geometry.setIndex(new THREE.BufferAttribute(faces, 1));
-    geometry.computeVertexNormals();
-
-    const face = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+    const points = new THREE.Points(geo, new THREE.PointsMaterial({
       color,
-      transparent: true,
-      opacity: 0.08,
-      side: THREE.DoubleSide,
-    }));
-
-    const edgeGeo = new THREE.EdgesGeometry(geometry);
-    const edges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.7,
-    }));
-
-    const pointGeo = new THREE.BufferGeometry();
-    pointGeo.setAttribute("position", new THREE.BufferAttribute(vertices.slice(), 3));
-    const points = new THREE.Points(pointGeo, new THREE.PointsMaterial({
-      color,
-      size: 0.02,
+      size: 0.025,
       transparent: true,
       opacity: 0.9,
     }));
 
-    scene.three.add(face);
-    scene.three.add(edges);
     scene.three.add(points);
 
-    session.layers = { face, edges, points };
+    session.layers = { points };
     session.lastVertices = vertices;
-    session.lastFaces    = faces;
   }
 
   function clearRoverMesh(session) {
     if (session.layers) {
-      const { face, edges, points } = session.layers;
-      scene.three.remove(face);
-      scene.three.remove(edges);
+      const { points } = session.layers;
       scene.three.remove(points);
-      face.geometry.dispose();
-      face.material.dispose();
-      edges.geometry.dispose();
-      edges.material.dispose();
       points.geometry.dispose();
       points.material.dispose();
       session.layers = null;
@@ -213,7 +179,6 @@
     }
     session.trailPoints  = [];
     session.lastVertices = null;
-    session.lastFaces    = null;
     clearObjectMeshes(session);
   }
 
@@ -290,19 +255,10 @@
 
   function mergeAllMeshes() {
     const vertArrays = [];
-    const faceArrays = [];
-    let vertOffset = 0;
 
     for (const session of sessions.values()) {
       if (!session.lastVertices || session.lastVertices.length === 0) continue;
       vertArrays.push(session.lastVertices);
-
-      const offsetFaces = new Uint32Array(session.lastFaces.length);
-      for (let i = 0; i < session.lastFaces.length; i += 1) {
-        offsetFaces[i] = session.lastFaces[i] + vertOffset;
-      }
-      faceArrays.push(offsetFaces);
-      vertOffset += session.lastVertices.length / 3;
     }
 
     if (vertArrays.length === 0) {
@@ -310,15 +266,10 @@
       return;
     }
 
-    const totalVLen  = vertArrays.reduce((s, a) => s + a.length, 0);
-    const totalFLen  = faceArrays.reduce((s, a) => s + a.length, 0);
+    const totalVLen   = vertArrays.reduce((s, a) => s + a.length, 0);
     const mergedVerts = new Float32Array(totalVLen);
-    const mergedFaces = new Uint32Array(totalFLen);
-
     let vo = 0;
     for (const v of vertArrays) { mergedVerts.set(v, vo); vo += v.length; }
-    let fo = 0;
-    for (const f of faceArrays) { mergedFaces.set(f, fo); fo += f.length; }
 
     if (globalMesh) {
       scene.three.remove(globalMesh);
@@ -326,31 +277,24 @@
       globalMesh.material.dispose();
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(mergedVerts, 3));
-    geometry.setIndex(new THREE.BufferAttribute(mergedFaces, 1));
-    geometry.computeVertexNormals();
-
-    globalMesh = new THREE.Mesh(
-      geometry,
-      new THREE.MeshLambertMaterial({ color: 0xe0e8ff, side: THREE.DoubleSide })
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(mergedVerts, 3));
+    globalMesh = new THREE.Points(
+      geo,
+      new THREE.PointsMaterial({ color: 0xe0e8ff, size: 0.025 })
     );
     scene.three.add(globalMesh);
 
-    // Fade individual rover layers so the global mesh reads clearly
+    // Fade individual rover layers so the merged cloud reads clearly
     for (const session of sessions.values()) {
       if (session.layers) {
-        session.layers.face.material.opacity  = 0.03;
-        session.layers.edges.material.opacity = 0.2;
         session.layers.points.material.opacity = 0.2;
       }
     }
 
     mergedView = true;
-    const totalVerts = mergedVerts.length / 3;
-    const totalFaces = mergedFaces.length / 3;
     setStatus(
-      `Global mesh: ${sessions.size} rovers · ${totalVerts} verts · ${totalFaces} faces`,
+      `Global cloud: ${sessions.size} rovers · ${mergedVerts.length / 3} points`,
       "ok"
     );
   }
@@ -364,8 +308,6 @@
     }
     for (const session of sessions.values()) {
       if (session.layers) {
-        session.layers.face.material.opacity  = 0.08;
-        session.layers.edges.material.opacity = 0.7;
         session.layers.points.material.opacity = 0.9;
       }
     }
@@ -438,20 +380,12 @@
     }
 
     if (msg.type === "map_chunk") {
-      if (
-        !Array.isArray(msg.vertices) ||
-        !Array.isArray(msg.faces) ||
-        msg.vertices.length === 0
-      ) {
+      if (!Array.isArray(msg.vertices) || msg.vertices.length === 0) {
         return;
       }
       const vertices = new Float32Array(msg.vertices);
-      const faces    = new Uint32Array(msg.faces);
-      updateRoverMesh(session, vertices, faces);
-
-      const vertCount = vertices.length / 3;
-      const faceCount = faces.length / 3;
-      setStatus(`${session.rover.name}: ${vertCount} verts / ${faceCount} faces`, "ok");
+      updateRoverMesh(session, vertices);
+      setStatus(`${session.rover.name}: ${vertices.length / 3} points`, "ok");
       return;
     }
 
@@ -483,7 +417,6 @@
       mappingState: "idle",
       lastPoseAt: Date.now(),
       lastVertices: null,
-      lastFaces: null,
       objectMeshes: new Map(),
     };
     sessions.set(rover.name, session);

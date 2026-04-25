@@ -116,11 +116,10 @@ class JetsonMapper:
     def _enable_spatial_mapping(self) -> None:
         """Encapsulated so it can be called both on init and after clear_mapping."""
         mapping = sl.SpatialMappingParameters()
-        mapping.map_type = sl.SPATIAL_MAP_TYPE.MESH
+        mapping.map_type = sl.SPATIAL_MAP_TYPE.FUSED_POINT_CLOUD
         mapping.resolution_meter = self.config.voxel_size
         mapping.range_meter = self.config.range_m
-        mapping.max_memory_usage = 2048  # MB — keeps mapping within Jetson's budget
-        mapping.save_texture = True
+        mapping.max_memory_usage = 1024  # MB — keeps mapping within Jetson's budget
 
         map_status = self.zed.enable_spatial_mapping(mapping)
         if map_status != sl.ERROR_CODE.SUCCESS:
@@ -346,44 +345,25 @@ class JetsonMapper:
             if isinstance(result, Exception):
                 self.clients.discard(client)
 
-    def _extract_mesh(self) -> dict[str, Any]:
-        mesh = sl.Mesh()
-        self.zed.extract_whole_spatial_map(mesh)
+    def _extract_map(self) -> dict[str, Any]:
+        fpc = sl.FusedPointCloud()
+        self.zed.extract_whole_spatial_map(fpc)
 
-        if mesh.get_number_of_triangles() == 0:
+        if fpc.get_number_of_points() == 0:
             return {}
 
-        # FIX: use MESH_FILTER.LOW rather than HIGH.
-        # HIGH is more aggressive/slower and can cause frame hitches on Jetson
-        # during the executor call. LOW matches the SDK tutorial recommendation
-        # and is sufficient for removing duplicate vertices and degenerate faces.
-        try:
-            fparams = sl.MeshFilterParameters()
-            fparams.set(sl.MESH_FILTER.LOW)
-            mesh.filter(fparams, update_mesh=True)
-        except Exception:
-            pass
-
-        verts = np.asarray(mesh.vertices, dtype=np.float32)
-        faces = np.asarray(mesh.triangles, dtype=np.int32)
-
-        if verts.size == 0 or faces.size == 0:
+        # vertices is (N, 4) — XYZ + packed RGBA float; we only need XYZ
+        raw = np.asarray(fpc.vertices, dtype=np.float32)
+        if raw.ndim != 2 or raw.shape[1] < 3 or raw.shape[0] == 0:
             return {}
 
-        # Cap face count — subsample and remap vertices to keep indices valid
-        if len(faces) > self.config.max_faces:
-            step = max(1, len(faces) // self.config.max_faces)
-            faces = faces[::step]
-            used = np.unique(faces)
-            remap = np.full(len(verts), -1, dtype=np.int32)
-            remap[used] = np.arange(len(used), dtype=np.int32)
-            verts = verts[used]
-            faces = remap[faces]
+        xyz = np.ascontiguousarray(raw[:, :3])
 
-        return {
-            "vertices": verts.flatten().tolist(),
-            "faces": faces.flatten().tolist(),
-        }
+        if len(xyz) > self.config.max_faces:
+            step = max(1, len(xyz) // self.config.max_faces)
+            xyz = xyz[::step]
+
+        return {"vertices": xyz.flatten().tolist()}
 
     async def _handle_client(self, websocket: WebSocketServerProtocol) -> None:
         self.clients.add(websocket)
@@ -534,7 +514,7 @@ class JetsonMapper:
                         })
 
                     if self._grab_count % self.config.mesh_interval == 0:
-                        mesh_data = await loop.run_in_executor(None, self._extract_mesh)
+                        mesh_data = await loop.run_in_executor(None, self._extract_map)
                         if mesh_data:
                             await self._broadcast({
                                 "type": "map_chunk",
