@@ -15,6 +15,18 @@
   const modalBody = document.getElementById("modal-body");
   const modalClose = document.getElementById("modal-close");
 
+  const aiModalOverlay = document.getElementById("ai-modal-overlay");
+  const aiModalTitle = document.getElementById("ai-modal-title");
+  const aiModalBody = document.getElementById("ai-modal-body");
+  const aiModalClose = document.getElementById("ai-modal-close");
+  const aiAssistBtn = document.getElementById("ai-assist-btn");
+  const aiGenerateBtn = document.getElementById("ai-generate-btn");
+  const aiExecuteBtn = document.getElementById("ai-execute-btn");
+  const aiCopyBtn = document.getElementById("ai-copy-btn");
+  const aiPromptInput = document.getElementById("ai-prompt-input");
+  const aiGeneratedCode = document.getElementById("ai-generated-code");
+  const aiMessage = document.getElementById("ai-message");
+
   const cameraRoverName = document.getElementById("camera-rover-name");
   const cameraStreamImg = document.getElementById("camera-stream-img");
   const streamButtons = Array.from(document.querySelectorAll(".stream-btn"));
@@ -625,6 +637,130 @@
     }
   }
 
+  function closeAiModal() {
+    aiModalOverlay.classList.add("hidden");
+    aiModalOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function openAiModal() {
+    aiModalOverlay.classList.remove("hidden");
+    aiModalOverlay.setAttribute("aria-hidden", "false");
+    aiPromptInput.focus();
+  }
+
+  async function generateAiCode() {
+    const prompt = (aiPromptInput.value || "").trim();
+    
+    if (!prompt) {
+      setMessage(aiMessage, "Please enter a prompt.", "error");
+      return;
+    }
+
+    setMessage(aiMessage, "Generating code with AI...");
+    aiGenerateBtn.disabled = true;
+    aiGeneratedCode.textContent = "";
+
+    try {
+      const response = await fetch("/api/ai_command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: prompt,
+          history: [],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let generatedCode = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i];
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data) {
+              try {
+                const json = JSON.parse(data);
+                if (json.type === "content") {
+                  generatedCode += json.content || "";
+                  aiGeneratedCode.textContent = generatedCode;
+                  aiGeneratedCode.scrollTop = aiGeneratedCode.scrollHeight;
+                } else if (json.type === "result") {
+                  generatedCode = json.code || generatedCode;
+                  aiGeneratedCode.textContent = generatedCode;
+                } else if (json.type === "error") {
+                  throw new Error(json.error || "Unknown error during generation");
+                }
+              } catch (e) {
+                if (!e.message.includes("JSON")) {
+                  throw e;
+                }
+              }
+            }
+          }
+        }
+
+        buffer = lines[lines.length - 1];
+      }
+
+      if (generatedCode) {
+        setMessage(aiMessage, "Code generated successfully!", "ok");
+        aiExecuteBtn.disabled = false;
+        aiCopyBtn.disabled = false;
+      } else {
+        setMessage(aiMessage, "No code was generated. Try a different prompt.", "error");
+      }
+    } catch (error) {
+      setMessage(aiMessage, `Generation failed: ${error.message}`, "error");
+      aiGeneratedCode.textContent = `Error: ${error.message}`;
+    } finally {
+      aiGenerateBtn.disabled = false;
+    }
+  }
+
+  function copyAiCode() {
+    const code = aiGeneratedCode.textContent || "";
+    if (!code) {
+      setMessage(aiMessage, "No code to copy.", "error");
+      return;
+    }
+
+    navigator.clipboard.writeText(code).then(() => {
+      setMessage(aiMessage, "Code copied to clipboard!", "ok");
+    }).catch((err) => {
+      setMessage(aiMessage, `Failed to copy: ${err.message}`, "error");
+    });
+  }
+
+  async function executeAiCode() {
+    const code = aiGeneratedCode.textContent || "";
+    if (!code || !code.trim()) {
+      setMessage(aiMessage, "No code to execute.", "error");
+      return;
+    }
+
+    // Close the AI modal
+    closeAiModal();
+
+    // Put the code in the code editor
+    codeInput.value = code;
+
+    // Execute the code
+    await executeCode();
+  }
+
   function wireEvents() {
     rescanBtn.addEventListener("click", async () => {
       setRescanMessage("Rescanning devices…");
@@ -660,6 +796,22 @@
     modalOverlay.addEventListener("click", (event) => {
       if (event.target === modalOverlay) {
         closeModal();
+      }
+    });
+
+    aiAssistBtn.addEventListener("click", openAiModal);
+    aiModalClose.addEventListener("click", closeAiModal);
+    aiModalOverlay.addEventListener("click", (event) => {
+      if (event.target === aiModalOverlay) {
+        closeAiModal();
+      }
+    });
+    aiGenerateBtn.addEventListener("click", generateAiCode);
+    aiExecuteBtn.addEventListener("click", executeAiCode);
+    aiCopyBtn.addEventListener("click", copyAiCode);
+    aiPromptInput.addEventListener("keydown", async (event) => {
+      if (event.key === "Enter" && event.ctrlKey) {
+        await generateAiCode();
       }
     });
   }

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import ipaddress
+import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request, session
+from flask import Flask, jsonify, render_template, request, session, Response, stream_with_context
 
 from services.rover_client import (
     RoverClientError,
@@ -15,6 +17,7 @@ from services.rover_client import (
     load_rover_targets,
 )
 
+model = 'qwen3-coder-next:cloud'
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -281,6 +284,80 @@ def create_app() -> Flask:
                 "steps": _build_ssh_steps(resolved),
             }
         )
+
+    def _extract_code_from_markdown(text: str) -> str:
+        """Extract Python code from markdown code blocks, or return raw text if no blocks found."""
+        import re
+        # Match ```python ... ``` or ``` ... ``` blocks
+        pattern = r'```(?:python)?\s*\n(.*?)\n```'
+        matches = re.findall(pattern, text, re.DOTALL)
+        
+        if matches:
+            # Return all matched code blocks joined by newlines
+            return '\n'.join(matches)
+        # If no markdown blocks, return the original text
+        return text
+
+    @app.post("/api/ai_command")
+    def ai_command() -> Any:
+        """Stream an LLM response that generates Python code for rover control."""
+        try:
+            from ollama import chat
+        except ImportError:
+            return jsonify({"ok": False, "error": "ollama library not installed. Install with: pip install ollama"}), 500
+
+        try:
+            payload = request.get_json(silent=True) or {}
+            user_message = str(payload.get("message", "")).strip()
+            history = payload.get("history", [])
+
+            if not user_message:
+                return jsonify({"ok": False, "error": "No message provided"}), 400
+
+            # Load AI system prompt from markdown file
+            prompt_path = Path(__file__).parent.parent / "ai_system_prompt.md"
+            if not prompt_path.exists():
+                return jsonify({"ok": False, "error": "AI system prompt not found"}), 500
+
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                system_prompt = f.read()
+
+            # Build messages list: system prompt, then history, then user message
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.extend(history)
+            messages.append({"role": "user", "content": user_message})
+
+            def generate():
+                """SSE generator that streams the LLM response."""
+                content_buffer = ""
+                try:
+                    stream = chat(
+                        model="qwen3-coder-next:cloud",
+                        messages=messages,
+                        stream=True,
+                        options={'num_predict': 2000},
+                        keep_alive='1h',
+                    )
+
+                    for chunk in stream:
+                        if chunk.message.content:
+                            content = chunk.message.content
+                            content_buffer += content
+                            yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
+
+                    # Extract code from markdown blocks
+                    extracted_code = _extract_code_from_markdown(content_buffer)
+                    yield f"data: {json.dumps({'type': 'result', 'code': extracted_code})}\n\n"
+
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+                yield "data: {\"type\": \"done\"}\n\n"
+
+            return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
     return app
 

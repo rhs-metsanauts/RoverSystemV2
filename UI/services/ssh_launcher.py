@@ -27,3 +27,7 @@ def launch_ssh_terminal(host: str, username: str = "rover") -> dict[str, Any]:
             "error": f"Unable to launch terminal: {exc}",
             "command": ssh_command,
         }
+
+if __name__ == "__main__":
+    result = launch_ssh_terminal("rover0")
+    print(result)

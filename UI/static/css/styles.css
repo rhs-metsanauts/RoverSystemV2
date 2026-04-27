@@ -654,3 +654,75 @@ pre {
       "output";
   }
 }
+.ai-assist-container {
+   display: flex;
+   flex-direction: column;
+   gap: 16px;
+}
+
+.ai-input-section {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+}
+
+.ai-input-section label {
+   display: block;
+   color: var(--text);
+   font-weight: 500;
+   margin-bottom: 4px;
+}
+
+.ai-input-section textarea {
+   min-height: 100px;
+   padding: 10px;
+   border: 1px solid rgba(95, 139, 255, 0.3);
+   border-radius: 8px;
+   background: rgba(6, 14, 30, 0.8);
+   color: var(--text);
+   font-family: "IBM Plex Sans", sans-serif;
+   resize: vertical;
+}
+
+.ai-input-section textarea:focus {
+   outline: none;
+   border-color: var(--accent);
+   box-shadow: 0 0 8px rgba(96, 213, 255, 0.3);
+}
+
+.ai-output-section {
+   display: flex;
+   flex-direction: column;
+   gap: 8px;
+}
+
+.ai-output-section > p {
+   margin: 0;
+   color: var(--muted);
+   font-size: 0.9rem;
+}
+
+#ai-generated-code {
+   min-height: 200px;
+   max-height: 350px;
+   padding: 12px;
+   background: rgba(6, 14, 30, 0.88);
+   border: 1px solid rgba(95, 139, 255, 0.27);
+   border-radius: 8px;
+   color: #d5e7ff;
+   font-family: "Consolas", "Courier New", monospace;
+   font-size: 0.85rem;
+   line-height: 1.5;
+   white-space: pre-wrap;
+   word-wrap: break-word;
+   overflow-y: auto;
+}
+
+.ai-code-actions {
+   display: flex;
+   gap: 8px;
+}
+
+.ai-code-actions .btn {
+   flex: 1;
+}
