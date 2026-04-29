@@ -44,12 +44,12 @@ class MapperConfig:
     mjpeg_host: str = os.getenv("MAPPER_MJPEG_HOST", "0.0.0.0")
     mjpeg_port: int = int(os.getenv("MAPPER_MJPEG_PORT", "8001"))
     rover_id: str = socket.gethostname()
-    voxel_size: float = float(os.getenv("MAPPER_VOXEL_SIZE", "0.35"))
+    voxel_size: float = float(os.getenv("MAPPER_VOXEL_SIZE", "0.15"))
     range_m: float = float(os.getenv("MAPPER_RANGE_M", "5.0"))
     fps: int = int(os.getenv("MAPPER_FPS", "15"))
     # Extract and broadcast mesh every N grabs (default ~4 s at 15 fps)
     mesh_interval: int = int(os.getenv("MAPPER_MESH_INTERVAL", "20"))
-    max_faces: int = int(os.getenv("MAPPER_MAX_FACES", "1000"))
+    max_faces: int = int(os.getenv("MAPPER_MAX_FACES", "4000"))
 
 
 class JetsonMapper:
