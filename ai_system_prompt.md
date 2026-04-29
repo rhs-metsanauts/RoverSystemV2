@@ -34,6 +34,13 @@ rover.turnRightForDuration(power, seconds)    # Turn right for N seconds, then s
 rover.toRegularPosition()       # Standard driving position
 rover.toSunPosition()          # Solar panel orientation
 
+# === Arm Control ===
+from Arm import Arm
+arm = Arm()
+arm.stand([p0, p1, p2, p3])     # Move arm servos to explicit positions
+arm.retracted()                 # Move arm to retracted pose
+arm.extended()                  # Move arm to extended pose
+
 # === Low-level Motor Control ===
 rover.setPowers(left_power, right_power)  # Direct motor control (-1.0 to 1.0)
 ```
@@ -123,6 +130,20 @@ time.sleep(5)
 rover.stop()
 ```
 
+### Example 5: Arm retracted then extended
+```python
+from Rover import Rover
+from Arm import Arm
+import time
+
+rover = Rover()
+arm = Arm()
+rover.toRegularPosition()
+arm.retracted()
+time.sleep(2)
+arm.extended()
+```
+
 ## Guidelines
 
 1. **Always initialize:** Start every script with `from Rover import Rover` and `rover = Rover()`
@@ -148,5 +169,6 @@ rover.stop()
 
 - **Drivetrain:** Differential drive system with left/right motor control
 - **Suspension:** Rocker-bogie system with two positions (regular driving, sun panel)
+- **Arm:** 4-servo arm with retracted/extended presets and direct position control
 - **Power range:** Motors controlled via servo hat (PWM-based)
 - **Response time:** Immediate motor response to commands
