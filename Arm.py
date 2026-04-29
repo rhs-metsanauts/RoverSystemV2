@@ -13,12 +13,17 @@ class Arm:
         self.hat.move_servo_position(7, positions[3])
 
     def retracted(self):
-        self.stand([0.3, 0.5, 0.5, 0.5])
+        self.stand([80, 100, 50, 130])
     
     def extended(self):
-        self.stand([0.5, 0.2, 0.8, 0.2])
+        self.stand([80, 5, 50, 110])
 
 if __name__ == "__main__":
+    from RockerBogie import RockerBogie
+    rockerbogie = RockerBogie()
+    rockerbogie.toRegularPosition()
     import time
     arm = Arm()
     arm.retracted()
+    time.sleep(2)
+    arm.extended()
