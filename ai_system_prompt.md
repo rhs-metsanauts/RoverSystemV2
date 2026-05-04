@@ -37,7 +37,6 @@ rover.toSunPosition()          # Solar panel orientation
 # === Arm Control ===
 from Arm import Arm
 arm = Arm()
-arm.stand([p0, p1, p2, p3])     # Move arm servos to explicit positions
 arm.retracted()                 # Move arm to retracted pose
 arm.extended()                  # Move arm to extended pose
 
